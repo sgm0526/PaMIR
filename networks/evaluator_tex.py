@@ -57,6 +57,8 @@ class EvaluatorTex(object):
         self.load_pretrained(checkpoint_file=pretrained_checkpoint_pamir_tex)
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
+        # self.mapper = xyz_uv_mapper_global().to(self.device)
+        self.mapper = xyz_uv_mapper().to(self.device)
 
     def load_pretrained(self, checkpoint_file=None):
         """Load a pretrained checkpoint.
@@ -163,3 +165,144 @@ class EvaluatorTex(object):
             self.pamir_net.load_state_dict(data['pamir_net'])
         else:
             raise IOError('Failed to load pamir_net model from the specified checkpoint!!')
+
+    def optm_mapper_batch(self, mapper, points, batch_size, iter_num):
+        assert iter_num > 0
+        num = points.shape[0]
+        optm = torch.optim.Adam(mapper.parameters(), lr=2e-4)
+        criterian = nn.L1Loss()
+        for i in tqdm(range(iter_num), desc='xyz to uv mapper Optimization'):
+            batch_idx = torch.randint(0, num, (batch_size,))
+            batch = points[batch_idx]
+            uv, xyz_hat = mapper(batch)
+            loss = criterian(xyz_hat, batch)
+            optm.zero_grad()
+            loss.backward()
+            optm.step()
+            if i % 100 == 0:
+                print(f'{i}th loss : ', loss)
+
+    def mapper_load(self, load_dir):
+        mapper_weight = torch.load(load_dir)
+        self.mapper.load_state_dict(mapper_weight)
+
+class xyz_uv_mapper_global(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        ch1 = 16
+        ch2 = 16
+        ch3 = 16
+        self.qq1 = nn.Sequential(
+            nn.Linear(3, ch1),
+            # nn.Tanh(),
+            nn.LeakyReLU(0.2),
+            nn.BatchNorm1d(ch1)
+        )
+        #         self.qq2 = nn.Sequential(
+        #             nn.Linear(ch1, ch1),
+        #             nn.LeakyReLU(0.2),
+        #             nn.BatchNorm1d(ch1)
+        #         )
+
+        self.qq2 = nn.Sequential(
+            nn.Linear(ch1, ch1),
+            # nn.Tanh(),
+            nn.LeakyReLU(0.2)
+        )
+
+        self.encoder = nn.Sequential(
+            nn.Linear(3 + ch1, ch2),
+            # nn.Tanh(),
+            nn.LeakyReLU(0.2),
+            nn.BatchNorm1d(ch2),
+            nn.Linear(ch2, 2),
+            # nn.Tanh(),
+            nn.LeakyReLU(0.2)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(ch1 + 2, ch3),
+            # nn.Tanh(),
+            nn.LeakyReLU(0.2),
+            nn.BatchNorm1d(ch3),
+            #             nn.Linear(ch3, ch3),
+            #             nn.LeakyReLU(0.2),
+            #             nn.BatchNorm1d(ch3),
+            nn.Linear(ch3, 3),
+        )
+
+    def forward(self, x):
+        f_global = self.encoding_global(x)
+        uv = self.encoding(x, f_global)
+        xyz_hat = self.decoding(uv, f_global)
+        return uv, xyz_hat
+
+    def encoding(self, x, f_global):
+        # f_global = f_global.T
+        f_global = f_global.repeat(x.shape[0], 1)
+
+        feat = torch.cat([x, f_global], dim=1)
+        uv = self.encoder(feat)
+
+        uv = uv - uv.min()
+        uv = uv / uv.max()
+        uv = uv * 2 - 1
+        return uv
+
+    def encoding_global(self, x):
+        a = self.qq1(x)
+        a = self.qq2(a)
+        # a = self.qq3(a)
+        f_global = torch.max(a, 0, keepdim=True)[0]  # (1,16)
+        return f_global
+
+    def decoding(self, uv, f_global):
+        f_global = f_global.repeat(uv.shape[0], 1)
+        feat = torch.cat([uv, f_global], dim=1)
+        xyz_hat = self.decoder(feat)
+        return xyz_hat
+
+
+class xyz_uv_mapper(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(3, 16),
+            # nn.LeakyReLU(0.2),
+            nn.Tanh(),
+            nn.BatchNorm1d(16),
+            nn.Linear(16, 16),
+            nn.Tanh(),
+            nn.BatchNorm1d(16),
+            # nn.LeakyReLU(0.2),
+            nn.Linear(16, 2)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(2, 16),
+            nn.Tanh(),
+            nn.BatchNorm1d(16),
+            # nn.LeakyReLU(0.2),
+            nn.Linear(16, 16),
+            nn.Tanh(),
+            nn.BatchNorm1d(16),
+            nn.Linear(16, 3),
+        )
+
+    def forward(self, x):
+        uv = self.encoding(x)
+        xyz_hat = self.decoding(uv)
+        return uv, xyz_hat
+
+    def encoding(self, x):
+        x = x * 5
+        uv = self.encoder(x)
+#         uv = uv - uv.min()
+#         uv = uv / uv.max()
+#         uv = uv * 2 - 1
+        uv = uv.clamp(0, 1)
+        return uv
+
+    def decoding(self, uv):
+        uv = uv * 2 -1
+        xyz_hat = self.decoder(uv)
+        return xyz_hat
