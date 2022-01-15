@@ -87,7 +87,7 @@ class EvaluatorTex(object):
             pts, cam_r, cam_t, cam_f, img.size(2))
         clr = self.forward_infer_color_value_group(
             img, vol, pts, pts_proj, group_size)
-        return clr
+        return clr, pts_proj
 
     def test_att_pifu(self, img, mesh_v, betas, pose, scale, trans):
         self.pamir_net.eval()

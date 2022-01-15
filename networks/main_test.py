@@ -10,6 +10,8 @@ from util import obj_io
 
 from torchvision.utils import save_image
 
+res = 1024
+
 def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint):
     from evaluator import Evaluator
     from dataloader.dataloader_testing import TestingImgLoader
@@ -19,7 +21,8 @@ def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrai
     os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
 
     device = torch.device("cuda")
-    loader = TestingImgLoader(out_dir, 512, 512)
+    # loader = TestingImgLoader(out_dir, 512, 512)
+    loader = TestingImgLoader(out_dir, res, res)
     evaluator = Evaluator(device, pretrained_checkpoint, pretrained_gcmr_checkpoint)
     for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
@@ -45,7 +48,8 @@ def main_test_wo_gt_smpl_with_optm(test_img_dir, out_dir, pretrained_checkpoint,
     os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
 
     device = torch.device("cuda")
-    loader = TestingImgLoader(out_dir, 512, 512, white_bg=True)
+    # loader = TestingImgLoader(out_dir, 512, 512, white_bg=True)
+    loader = TestingImgLoader(out_dir, res, res, white_bg=True)
     evaluator = Evaluator(device, pretrained_checkpoint, pretrained_gcmr_checkpoint)
 
     for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
@@ -72,6 +76,57 @@ def main_test_wo_gt_smpl_with_optm(test_img_dir, out_dir, pretrained_checkpoint,
         with open(smpl_param_name, 'wb') as fp:
             pkl.dump({'betas': optm_betas.squeeze().detach().cpu().numpy(),
                       'body_pose': optm_thetas.squeeze().detach().cpu().numpy(),
+                      'init_betas': pred_betas.squeeze().detach().cpu().numpy(),
+                      'init_body_pose': pred_rotmat.squeeze().detach().cpu().numpy(),
+                      'body_scale': scale.squeeze().detach().cpu().numpy(),
+                      'global_body_translation': trans.squeeze().detach().cpu().numpy()},
+                     fp)
+        # os.system('cp %s %s.original' % (mesh_fname, mesh_fname))
+        # os.system('%s %s %s' % (REMESH_BIN, mesh_fname, mesh_fname))
+        # os.system('%s %s %s' % (ISOLATION_REMOVAL_BIN, mesh_fname, mesh_fname))
+    print('Testing Done. ')
+
+def main_test_wo_gt_smpl_wo_optm(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint,
+                                   iternum=50):
+    from evaluator import Evaluator
+    from dataloader.dataloader_testing import TestingImgLoader
+
+    smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+        util.read_smpl_constants('./data')
+
+    os.makedirs(out_dir, exist_ok=True)
+    os.system('cp -r %s/. %s/' % (test_img_dir, out_dir))
+    os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
+
+    device = torch.device("cuda")
+    loader = TestingImgLoader(out_dir, res, res, white_bg=True)
+    evaluator = Evaluator(device, pretrained_checkpoint, pretrained_gcmr_checkpoint)
+
+    for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        print(batch['img_dir'])
+        pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator.test_gcmr(batch['img'])
+
+        #optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param(
+        #    batch['img'], batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iternum)
+        #optm_betas = optm_betas.detach()
+        #optm_thetas = optm_thetas.detach()
+        scale, trans = scale.detach(), trans.detach()
+
+        mesh = evaluator.test_pifu(batch['img'], 256, pred_betas, pred_rotmat, scale, trans)
+        img_dir = batch['img_dir'][0]
+        img_fname = os.path.split(img_dir)[1]
+        mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '.obj')
+        init_smpl_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '_init_smpl.obj')
+        #optm_smpl_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '_optm_smpl.obj')
+        obj_io.save_obj_data(mesh, mesh_fname)
+        obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                             init_smpl_fname)
+
+        smpl_param_name = os.path.join(out_dir, 'results', img_fname[:-4] + '_smplparams.pkl')
+        with open(smpl_param_name, 'wb') as fp:
+            pkl.dump({'betas': pred_betas.squeeze().detach().cpu().numpy(),
+                      'body_pose': pred_rotmat.squeeze().detach().cpu().numpy(),
                       'init_betas': pred_betas.squeeze().detach().cpu().numpy(),
                       'init_body_pose': pred_rotmat.squeeze().detach().cpu().numpy(),
                       'body_scale': scale.squeeze().detach().cpu().numpy(),
@@ -141,7 +196,8 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
     os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
 
     device = torch.device("cuda")
-    loader = TestingImgLoader(out_dir, 512, 512, white_bg=True)
+    # loader = TestingImgLoader(out_dir, 512, 512, white_bg=True)
+    loader = TestingImgLoader(out_dir, res, res, white_bg=True)
     evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
     for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
@@ -154,39 +210,48 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         # uv_img, uv_mapping = xyz_to_uv_mapping('./mesh_vert_hat.pt', evaluater, batch)
         evaluater.mapper_load('./mapper_weight.pt')
         evaluater.mapper.eval()
-        uv_img, uv_mapping, xyz_hat = xyz_to_uv_mapping_3(evaluater, batch)
-        # uv_mapping = uv_mapping / 2 + 0.5
+        # uv_img, uv_mapping, xyz_hat = xyz_to_uv_mapping_3(evaluater, batch)
 
-        # save_image(uv_img, './uv_made_4.png')
-        import pdb;
-        pdb.set_trace()
-        mesh_color_hat = evaluater.test_tex_pifu(batch['img'], xyz_hat.unsqueeze(0), batch['betas'],
+        mesh_color, pts_proj = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'])
+        pts_proj = pts_proj[0] / 2 + 0.5
+        pts_proj = torch.cat([pts_proj[:, 0:1], 1 - pts_proj[:, 1:2]], dim=1)
+        # import pdb; pdb.set_trace()
 
         img_dir = batch['img_dir'][0]
         img_fname = os.path.split(img_dir)[1]
         mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '_tex.obj')
-        uv_fname = mesh_fname.replace('.obj', '_uv.png')
-        save_image(uv_img, uv_fname)
+        # uv_fname = mesh_fname.replace('.obj', '_uv.png')
+        # save_image(uv_img, uv_fname)
 
         obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
                               'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
-                              'vc': mesh_color_hat.squeeze()},
+                              'vc': mesh_color.squeeze()},
                              mesh_fname)
+        # obj_io.save_obj_data_with_mat({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
+        #                       'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+        #                       'ft': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+        #                       'fn': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+        #                       'vt': uv_mapping.detach().cpu().numpy()},
+        #                      mesh_fname.replace('.obj', '_vt.obj'),
+        #                               uv_fname)
         obj_io.save_obj_data_with_mat({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
                               'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
                               'ft': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
                               'fn': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
-                              'vt': uv_mapping.detach().cpu().numpy()},
+                              'vt': pts_proj.detach().cpu().numpy()},
                              mesh_fname.replace('.obj', '_vt.obj'),
-                                      uv_fname)
+                                      os.path.basename(batch['img_dir'][0]))
+        save_image(batch['img'], os.path.join(out_dir, 'results', img_fname))
     print('Testing Done. ')
 
 
 if __name__ == '__main__':
     iternum=1
-    input_image_dir = './results/test_data/'
-    output_dir = './results/test_data/'
+    input_image_dir = './results/THuman_hr_test/'
+    output_dir = './results/THuman_hr_test/'
+    # input_image_dir = './results/test_data/'
+    # output_dir = './results/test_data_copy/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -204,6 +269,11 @@ if __name__ == '__main__':
     #                                pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
     #                                pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt',
     #                                iternum=iternum)
+
+    main_test_wo_gt_smpl_wo_optm(input_image_dir,
+                                  output_dir,
+                                  pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
+                                  pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
     main_test_texture(output_dir,
                       output_dir,

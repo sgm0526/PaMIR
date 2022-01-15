@@ -385,7 +385,9 @@ class TexPamirNetAttention(BaseNetwork):
         pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
                                       mode='bilinear', padding_mode='border')
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
-        pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+       #  pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+        pt_tex = pt_tex_sample
+
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
 
