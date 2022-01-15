@@ -63,8 +63,33 @@ class VoxelizationFunction(Function):
         occ_volume, semantic_volume, weight_sum_volume = voxelize_cuda.forward_semantic_voxelization(
             smpl_vertices, smpl_vertex_code, smpl_tetrahedrons,
              occ_volume, semantic_volume, weight_sum_volume, sigma)
-            
-        return semantic_volume
+
+        def generate_point_grids(vol_res):
+            x_coords = np.array(range(0, vol_res), dtype=np.float32)
+            y_coords = np.array(range(0, vol_res), dtype=np.float32)
+            z_coords = np.array(range(0, vol_res), dtype=np.float32)
+
+            yv, xv, zv = np.meshgrid(x_coords, y_coords, z_coords)
+            xv = np.reshape(xv, (vol_res, vol_res, vol_res, 1))
+            yv = np.reshape(yv, (vol_res, vol_res, vol_res, 1))
+            zv = np.reshape(zv, (vol_res, vol_res, vol_res, 1))
+            xv = xv / vol_res - 0.5 + 0.5 / vol_res
+            yv = yv / vol_res - 0.5 + 0.5 / vol_res
+            zv = zv / vol_res - 0.5 + 0.5 / vol_res
+
+            pts = np.concatenate([zv, yv, xv], axis=-1) #zyx
+            pts = np.float32(pts)
+            pts *= 2.0
+
+            return pts
+
+        #grid_3d = generate_point_grids(ctx.volume_res)
+        #grid_3d = torch.from_numpy(grid_3d).unsqueeze(0).repeat(ctx.batch_size, 1, 1, 1, 1).cuda()
+        #volume = torch.cat([occ_volume.unsqueeze(-1), grid_3d], -1)
+        volume = semantic_volume
+
+        return volume
+
 
 class Voxelization(nn.Module):
     """
