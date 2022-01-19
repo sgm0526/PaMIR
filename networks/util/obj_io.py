@@ -200,6 +200,60 @@ def save_obj_data(model, filename):
                     f = np.copy(f_) + 1
                     fp.write('f %d %d %d\n' % (f[0], f[1], f[2]))
 
+def save_obj_data_with_mat(model, filename, uv_fname):
+    assert 'v' in model and model['v'].size != 0 and model['vt'].size != 0
+    base_name = os.path.basename(filename)
+    with open('./mtl_info.txt', 'r') as m_info:
+        mtl_info = m_info.readlines()
+    with open(filename.replace('.obj', '.mtl'), 'w') as fm:
+        fm.write(''.join(mtl_info))
+        fm.write('map_Kd %s' % (os.path.basename(uv_fname)))
+
+    with open(filename, 'w') as fp:
+        fp.write('mtlib %s.mtl\n' % (base_name))
+        if 'v' in model and model['v'].size != 0:
+            if 'vc' in model and model['vc'].size != 0:
+                for v, vc in zip(model['v'], model['vc']):
+                    fp.write('v %f %f %f %f %f %f\n' % (v[0], v[1], v[2], vc[0], vc[1], vc[2]))
+            else:
+                for v in model['v']:
+                    fp.write('v %f %f %f\n' % (v[0], v[1], v[2]))
+
+        if 'vn' in model and model['vn'].size != 0:
+            for vn in model['vn']:
+                fp.write('vn %f %f %f\n' % (vn[0], vn[1], vn[2]))
+
+        if 'vt' in model and model['vt'].size != 0:
+            for vt in model['vt']:
+                fp.write('vt %f %f\n' % (vt[0], vt[1]))
+
+        if 'f' in model and model['f'].size != 0:
+            if 'fn' in model and model['fn'].size != 0 and 'ft' in model and model['ft'].size != 0:
+                assert model['f'].size == model['fn'].size
+                assert model['f'].size == model['ft'].size
+                for f_, ft_, fn_ in zip(model['f'], model['ft'], model['fn']):
+                    f = np.copy(f_) + 1
+                    ft = np.copy(ft_) + 1
+                    fn = np.copy(fn_) + 1
+                    fp.write('f %d/%d/%d %d/%d/%d %d/%d/%d\n' %
+                             (f[0], ft[0], fn[0], f[1], ft[1], fn[1], f[2], ft[2], fn[2]))
+            elif 'fn' in model and model['fn'].size != 0:
+                assert model['f'].size == model['fn'].size
+                for f_, fn_ in zip(model['f'], model['fn']):
+                    f = np.copy(f_) + 1
+                    fn = np.copy(fn_) + 1
+                    fp.write('f %d//%d %d//%d %d//%d\n' % (f[0], fn[0], f[1], fn[1], f[2], fn[2]))
+            elif 'ft' in model and model['ft'].size != 0:
+                assert model['f'].size == model['ft'].size
+                for f_, ft_ in zip(model['f'], model['ft']):
+                    f = np.copy(f_) + 1
+                    ft = np.copy(ft_) + 1
+                    fp.write('f %d/%d %d/%d %d/%d\n' % (f[0], ft[0], f[1], ft[1], f[2], ft[2]))
+            else:
+                for f_ in model['f']:
+                    f = np.copy(f_) + 1
+                    fp.write('f %d %d %d\n' % (f[0], f[1], f[2]))
+        fp.write('\nusemtl Mymtl')
 
 def save_obj_data_binary(model, filename):
     assert 'v' in model and model['v'].size != 0

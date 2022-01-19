@@ -81,7 +81,7 @@ def main_test_wo_gt_smpl_with_optm(test_img_dir, out_dir, pretrained_checkpoint,
         # os.system('%s %s %s' % (ISOLATION_REMOVAL_BIN, mesh_fname, mesh_fname))
     print('Testing Done. ')
 
-
+from torchvision.utils import save_image
 def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex):
     from evaluator_tex import EvaluatorTex
@@ -101,7 +101,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         if not ('mesh_vert' in batch and 'mesh_face' in batch):
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
-        mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
+        mesh_color, pts_proj = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'])
 
         img_dir = batch['img_dir'][0]
@@ -111,6 +111,20 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                               'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
                               'vc': mesh_color.squeeze()},
                              mesh_fname)
+
+        pts_proj = pts_proj / 2 + 0.5
+        pts_proj = pts_proj.squeeze(1)
+        pts_proj = torch.cat([pts_proj[:, 0:1], 1 - pts_proj[:, 1:2]], dim=1)
+
+        obj_io.save_obj_data_with_mat({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
+                                       'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+                                       'ft': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+                                       'fn': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+                                       'vt': pts_proj.detach().cpu().numpy()},
+                                      mesh_fname.replace('.obj', '_vt.obj'),
+                                      os.path.basename(batch['img_dir'][0]))
+        save_image(batch['img'], os.path.join(out_dir, 'results', img_fname))
+
     print('Testing Done. ')
 
 
