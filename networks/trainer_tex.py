@@ -19,7 +19,7 @@ import math
 
 from util.base_trainer import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
-from network.arch import PamirNet, TexPamirNetAttention
+from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_att
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from neural_voxelization_layer.voxelize import Voxelization
 from util.img_normalization import ImgNormalizerForResnet
@@ -60,7 +60,7 @@ class Trainer(BaseTrainer):
 
         # pamir_net
         self.pamir_net = PamirNet().to(self.device)
-        self.pamir_tex_net = TexPamirNetAttention().to(self.device)
+        self.pamir_tex_net = TexPamirNetAttention_att().to(self.device)
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
@@ -113,6 +113,11 @@ class Trainer(BaseTrainer):
         gt_scale = input_batch['scale']
         gt_trans = input_batch['trans']
 
+        ##
+        grouped_pts = input_batch['grouped_pts']
+        grouped_pts_proj = input_batch['grouped_pts_proj']
+        ##
+
         batch_size, pts_num = pts.size()[:2]
         losses = dict()
 
@@ -122,7 +127,7 @@ class Trainer(BaseTrainer):
             img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
         output_clr_, output_clr, output_att, smpl_feat = self.pamir_tex_net.forward(
-            img, vol, pts, pts_proj, img_feat_geo)
+            img, vol, pts, pts_proj, img_feat_geo, grouped_pts,  grouped_pts_proj  )##
         losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
         losses['att'] = self.attention_loss(output_att)
 

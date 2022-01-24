@@ -387,14 +387,19 @@ class TexPamirNetAttention(BaseNetwork):
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
-class TexPamirNetAttention_uv(BaseNetwork):
+
+from util.pointconv_util import knn_point, index_points, farthest_point_sample, PointConvDensitySetAbstraction,PositionalEncoding, MultiHeadAttention
+
+class TexPamirNetAttention_att(BaseNetwork):
     def __init__(self):
-        super(TexPamirNetAttention_uv, self).__init__()
+        super(TexPamirNetAttention_att, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
-        self.add_module('ve', ve2.VolumeEncoder(2, self.feat_ch_3D))
-        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D, 2, out_sigmoid=False))
+        self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
+        #self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+3+256 + self.feat_ch_2D + self.feat_ch_3D, 2, out_sigmoid=False))
+        #self.add_module('mlp',MLP(256 + self.feat_ch_2D + self.feat_ch_3D, 4))
+        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D + 3 + 256 + self.feat_ch_2D + self.feat_ch_3D, 4))
         self.add_module('mlp_refine', MLP(256 + self.feat_ch_2D, 4))
 
         logging.info('#trainable params of 2d encoder = %d' %
@@ -404,13 +409,25 @@ class TexPamirNetAttention_uv(BaseNetwork):
         logging.info('#trainable params of mlp = %d' %
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
-        #self.pe = PositionalEncoding(num_freqs=6, d_in=2, freq_factor=np.pi, include_input=True)
 
-    def forward(self, img, vol, pts, pts_proj, img_feat_geo, uv):
+        self.ray_attention = MultiHeadAttention(16, 256 + self.feat_ch_2D+self.feat_ch_3D+3, 16, 16)
+        #self.ray_attention = MultiHeadAttention(4,  self.feat_ch_3D,256 + self.feat_ch_2D , 256 + self.feat_ch_2D , 4, 4, 4)
+
+
+    def forward(self, img, vol, pts , pts_proj, img_feat_geo, all_pts, all_pts_proj):
+        #import pdb; pdb.set_trace()
+
+        k= 20
+        all_pts = all_pts[:, :, :k, ]
+        all_pts_proj = all_pts[:, :, :k, ]
+
+
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
         pts: [batchsize * 256 * point_num ]
+        all_pts  # B, N , k, 3
+        all_pts_proj  @#  # B, N , k, 2
         """
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
@@ -425,42 +442,78 @@ class TexPamirNetAttention_uv(BaseNetwork):
         img_gridconcat = torch.cat([img, _2d_grid], 1)
         img_feat_tex = self.cg(img_gridconcat )
         img_feat = torch.cat([img_feat_tex, img_feat_geo], dim=1)
-
-        h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
-        v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
-        grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-
-        pts = pts * 2.0  # corrects coordinates for torch in-network sampling
-        x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
-        y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
-        z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
-        grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
         vol_feat = self.ve(vol, intermediate_output=False)
+        pts = pts * 2.0  # corrects coordinates for torch in-network sampling
+        all_pts = all_pts * 2.0  # corrects coordinates for torch in-network sampling
 
+
+
+        h_grid = all_pts_proj[:, :,:, 0].view(batch_size, point_num, k , 1)
+        v_grid = all_pts_proj[:, :,:, 1].view(batch_size, point_num, k, 1)
+        grid_2d = torch.cat([h_grid, v_grid], dim=-1)
         pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
                                    mode='bilinear', padding_mode='border')
+
+
+        x_grid = all_pts[:, :,:, 0].view(batch_size, point_num, k, 1, 1)
+        y_grid = all_pts[:, :,:, 1].view(batch_size, point_num, k, 1, 1)
+        z_grid = all_pts[:, :,:, 2].view(batch_size, point_num, k, 1, 1)
+        grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
         pt_feat_3D = F.grid_sample(input=vol_feat, grid=grid_3d, align_corners=False,
                                    mode='bilinear', padding_mode='border')
-        pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
+        pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, k])
 
-        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1)
+        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #B, C, N k
 
 
         ##
-        #pt_feat = torch.cat([grid_2d.permute(0,3,1,2), pt_feat],1)
-        pt_out = self.mlp(pt_feat)
-        offset = pt_out.permute([0, 2, 3, 1])
+        #import pdb; pdb.set_trace()
+        grouped_feature_ = pt_feat.permute(0,2,3,1)
+        grouped_feature = torch.cat([grouped_feature_ , all_pts], -1)  # B, N , k, C+3
 
-        grid_2d_offset =grid_2d + offset
         #import pdb; pdb.set_trace()
 
-        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
+        channel_size = grouped_feature.size(-1)
+        grouped_feature = grouped_feature.reshape(-1, k, channel_size)  # B* N , k, C
+        selfatt_feat, _ = self.ray_attention(grouped_feature, grouped_feature, grouped_feature)  # B* N , k, C
+        selfatt_feat= selfatt_feat[:,0,:].unsqueeze(1)   # B* N , 1, C
+        #selfatt_feat = self.out_geometry_fc(selfatt_feat.permute(0, 2, 1)).permute(0, 2, 1)  # B* N , 1, C
+        selfatt_feats = selfatt_feat.reshape(batch_size, -1, channel_size)  # B, N ,C
+
+        #pt_feat = torch.cat([grid_2d.permute(0,3,1,2), pt_feat],1)
+        #new_xyz, new_points= self.sa1(all_pts.permute(0,2,1), pt_feat.squeeze(-1))
+
+        input_feat = selfatt_feats.permute(0,2,1).unsqueeze(-1) # B, C, N, 1
+        pt_feat_part = grouped_feature_[:,:,0,:].permute(0,2,1).unsqueeze(-1)
+
+        #import pdb; pdb.set_trace()
+        input_feat = torch.cat([pt_feat_part, input_feat], 1) # B, 2C, N, 1
+        # input_feat = pt_feat# B, C, N, 1
+
+        point_num_part = pts.size()[1]
+        h_grid_part = pts_proj[:, :, 0].view(batch_size, point_num_part, 1, 1)
+        v_grid_part = pts_proj[:, :, 1].view(batch_size, point_num_part, 1, 1)
+        grid_2d_part = torch.cat([h_grid_part, v_grid_part], dim=-1)
+
+
+        pt_out = self.mlp(input_feat)
+        pt_out  = pt_out.permute([0, 2, 3, 1])
+        # grid_2d_offset =grid_2d_part + pt_out
+        # #import pdb; pdb.set_trace()
+        #
+        # pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
+        #                               mode='bilinear', padding_mode='border')
+        # pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
+        # return pt_tex_sample, pt_tex_sample, grid_2d_offset, pt_feat_3D.squeeze()  # ,  rgb_pred
+
+        pt_out = pt_out.view(batch_size, point_num_part, 4)
+        pt_tex_pred = pt_out[:, :, :3]
+        pt_tex_att = pt_out[:, :, 3:]
+        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_part, align_corners=False,
                                       mode='bilinear', padding_mode='border')
-
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
-
-
-        return pt_tex_sample,pt_tex_sample, grid_2d_offset, pt_feat_3D.squeeze()#,  rgb_pred
+        pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+        return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
 
     def generate_3d_grids(self, res):
@@ -499,7 +552,6 @@ class TexPamirNetAttention_uv(BaseNetwork):
         pts *= 2.0
 
         return pts
-
 
 class TexPamirNetAttentionMultiview(BaseNetwork):
     def __init__(self):

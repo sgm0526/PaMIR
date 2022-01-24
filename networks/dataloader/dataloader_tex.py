@@ -42,7 +42,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import constant
 from .utils import load_data_list, generate_cam_Rt
-
+from util.pointconv_util import knn_point, index_points, farthest_point_sample, PointConvDensitySetAbstraction,PositionalEncoding, MultiHeadAttention
 
 class TrainingImgDataset(Dataset):
     def __init__(self, dataset_dir,
@@ -88,12 +88,24 @@ class TrainingImgDataset(Dataset):
 
         img = self.load_image(data_item, view_id)
         cam_R, cam_t = self.load_cams(data_item, view_id)
-        pts, pts_clr = self.load_points(data_item, view_id, point_num)
+        pts, pts_clr,all_pts = self.load_points(data_item, view_id, point_num)
         pts_r = self.rotate_points(pts, view_id)
         pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
         # pts_clr = pts_clr * alpha + beta
         pose, betas, trans, scale = self.load_smpl_parameters(data_item)
         pose, betas, trans, scale = self.update_smpl_params(pose, betas, trans, scale, view_id)
+
+
+        ##load k nearest neighbor points
+        all_pts_r = self.rotate_points(all_pts, view_id)  ##
+        all_pts_proj = self.project_points(all_pts, cam_R, cam_t, cam_f)  ##
+        all_pts_r = torch.from_numpy(all_pts_r)
+        all_pts_proj = torch.from_numpy(all_pts_proj)
+
+        k = 50
+        idx = knn_point(k, all_pts_r.unsqueeze(0), torch.from_numpy(pts_r).unsqueeze(0))  # B, N(5000), k
+        grouped_pts = index_points(all_pts_r.unsqueeze(0), idx).squeeze(0)  # B, N , k, 3
+        grouped_pts_proj = index_points(all_pts_proj.unsqueeze(0), idx).squeeze(0)  # B, N , k, 3
 
         return_dict = {
             'model_id': model_id,
@@ -109,6 +121,9 @@ class TrainingImgDataset(Dataset):
             'pose': torch.from_numpy(pose),
             'scale': torch.from_numpy(scale),
             'trans': torch.from_numpy(trans),
+            'grouped_pts': grouped_pts,
+            'grouped_pts_proj': grouped_pts_proj,
+
         }
 
         return return_dict
@@ -186,14 +201,19 @@ class TrainingImgDataset(Dataset):
         surface_colors = uv_render[uv_mask]
         surface_normal = uv_normal[uv_mask]
 
+        ##
+        surface_points += surface_normal * np.random.randn(surface_points.shape[0], 1) * 0.01
+        all_surface_points = surface_points
+        ##
+
         sample_id = np.int32(np.random.rand(point_num) * len(surface_points))
         surface_points = surface_points[sample_id]
         surface_colors = surface_colors[sample_id]
         surface_normal = surface_normal[sample_id]
 
-        surface_points += surface_normal * np.random.randn(point_num, 1) * 0.01
+        #surface_points += surface_normal * np.random.randn(point_num, 1) * 0.01
 
-        return surface_points, surface_colors
+        return surface_points, surface_colors, all_surface_points
 
     def load_smpl_parameters(self, data_item):
         dat_fpath = os.path.join(

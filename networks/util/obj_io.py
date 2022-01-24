@@ -200,6 +200,8 @@ def save_obj_data(model, filename):
                     f = np.copy(f_) + 1
                     fp.write('f %d %d %d\n' % (f[0], f[1], f[2]))
 
+
+import os
 def save_obj_data_with_mat(model, filename, uv_fname):
     assert 'v' in model and model['v'].size != 0 and model['vt'].size != 0
     base_name = os.path.basename(filename)
