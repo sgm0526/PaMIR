@@ -10,7 +10,7 @@ from util import obj_io
 
 from torchvision.utils import save_image
 
-res = 1024
+res = 512
 
 def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint):
     from evaluator import Evaluator
@@ -166,7 +166,7 @@ def xyz_to_uv_mapping_2(evaluater, batch):
     return uv_img, torch.cat([uv[:,1:2], uv[:,0:1]], dim=1)
 
 def xyz_to_uv_mapping_3(evaluater, batch):
-    img_res = 8192
+    img_res = 1024
     mapper = evaluater.mapper
     mesh_vert = batch['mesh_vert'][0]
     # f_global = mapper.encoding_global(mesh_vert)
@@ -179,7 +179,8 @@ def xyz_to_uv_mapping_3(evaluater, batch):
     with torch.no_grad():
         xyz_hat_in = mapper.decoding(uv_space_lin.cuda())
 
-    colors = evaluater.test_tex_pifu(batch['img'], xyz_hat_in[None,], batch['betas'], batch['pose'], batch['scale'],
+    import pdb; pdb.set_trace()
+    colors, _ = evaluater.test_tex_pifu(batch['img'], xyz_hat_in[None,], batch['betas'], batch['pose'], batch['scale'],
                                      batch['trans'])
     colors_1 = colors.reshape(img_res, img_res, 3)
     colors_2 = torch.Tensor(colors_1)
@@ -208,7 +209,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
 
         # uv_img, uv_mapping = xyz_to_uv_mapping('./mesh_vert_hat.pt', evaluater, batch)
-        evaluater.mapper_load('./mapper_weight.pt')
+        # evaluater.mapper_load('./mapper_weight.pt')
         evaluater.mapper.eval()
         # uv_img, uv_mapping, xyz_hat = xyz_to_uv_mapping_3(evaluater, batch)
 
@@ -216,7 +217,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                                              batch['pose'], batch['scale'], batch['trans'])
         pts_proj = pts_proj[0] / 2 + 0.5
         pts_proj = torch.cat([pts_proj[:, 0:1], 1 - pts_proj[:, 1:2]], dim=1)
-        # import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
 
         img_dir = batch['img_dir'][0]
         img_fname = os.path.split(img_dir)[1]
@@ -247,11 +248,11 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
 
 if __name__ == '__main__':
-    iternum=1
-    input_image_dir = './results/THuman_hr_test/'
-    output_dir = './results/THuman_hr_test/'
-    # input_image_dir = './results/test_data/'
-    # output_dir = './results/test_data_copy/'
+    iternum=50
+    # input_image_dir = './results/THuman_hr_test/'
+    # output_dir = './results/THuman_hr_test/'
+    input_image_dir = './results/test_data_0000/'
+    output_dir = './results/test_data_0000/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -264,16 +265,16 @@ if __name__ == '__main__':
     #                        pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
     #! Otherwise, use this function to predict and optimize a SMPL model for the input image
-    # main_test_wo_gt_smpl_with_optm(input_image_dir,
-    #                                output_dir,
-    #                                pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
-    #                                pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt',
-    #                                iternum=iternum)
+    main_test_wo_gt_smpl_with_optm(input_image_dir,
+                                   output_dir,
+                                   pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
+                                   pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt',
+                                   iternum=iternum)
 
-    main_test_wo_gt_smpl_wo_optm(input_image_dir,
-                                  output_dir,
-                                  pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
-                                  pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
+    # main_test_wo_gt_smpl_wo_optm(input_image_dir,
+    #                               output_dir,
+    #                               pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
+    #                               pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
     main_test_texture(output_dir,
                       output_dir,
