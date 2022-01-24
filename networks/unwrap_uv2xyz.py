@@ -42,7 +42,7 @@ def uv_2_3dcoord_in_uv(uv, tri, tri3d):
     return weight@tri3d
 
 
-obj_data =obj_io.load_obj_data('./main_obj_real.obj')
+obj_data =obj_io.load_obj_data('./main_mesh_0124.obj')
 v = obj_data['v']
 f = obj_data['f']
 ft = obj_data['ft']
