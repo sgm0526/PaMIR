@@ -134,11 +134,13 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 if __name__ == '__main__':
     iternum=50
     input_image_dir = './results/test_data/'
-    output_dir = './results/test_data/'
+    output_dir = './results/test_data_pamir_texture_epoch30/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
     # output_dir = './results/test_data_rendered/'
+    pretrained_mesh_model = './results/pamir_geometry/checkpoints/latest.pt'
+    pretrained_texture_model ='./results/pamir_texture_epoch30/checkpoints/latest.pt'
 
     #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
     # main_test_with_gt_smpl(input_image_dir,
@@ -149,10 +151,10 @@ if __name__ == '__main__':
     #! Otherwise, use this function to predict and optimize a SMPL model for the input image
     main_test_wo_gt_smpl_with_optm(input_image_dir,
                                    output_dir,
-                                   pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
+                                   pretrained_checkpoint=pretrained_mesh_model ,
                                    pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
     main_test_texture(output_dir,
                       output_dir,
-                      pretrained_checkpoint_pamir='./results/pamir_geometry/checkpoints/latest.pt',
-                      pretrained_checkpoint_pamirtex='./results/pamir_texture/checkpoints/latest.pt')
+                      pretrained_checkpoint_pamir=pretrained_mesh_model ,
+                      pretrained_checkpoint_pamirtex=pretrained_texture_model)

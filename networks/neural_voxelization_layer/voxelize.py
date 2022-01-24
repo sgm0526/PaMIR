@@ -87,6 +87,7 @@ class VoxelizationFunction(Function):
         #grid_3d = torch.from_numpy(grid_3d).unsqueeze(0).repeat(ctx.batch_size, 1, 1, 1, 1).cuda()
         #volume = torch.cat([occ_volume.unsqueeze(-1), grid_3d], -1)
         volume = semantic_volume
+        #volume = occ_volume.unsqueeze(-1)
 
         return volume
 
