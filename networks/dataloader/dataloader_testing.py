@@ -126,7 +126,10 @@ class TestingImgDataset(Dataset):
         except:
             raise RuntimeError('Failed to load mask for: ' + data_item)
 
-        assert img.shape[0] == self.img_h and img.shape[1] == self.img_w
+        # assert img.shape[0] == self.img_h and img.shape[1] == self.img_w
+        if img.shape[0] != self.img_h:
+            img = cv.resize(img, (self.img_w, self.img_h))
+            msk = cv.resize(msk, (self.img_w, self.img_h))
         img = np.float32(cv.cvtColor(img, cv.COLOR_RGB2BGR)) / 255
         msk = np.float32(msk) / 255
         msk = np.reshape(msk, [self.img_h, self.img_w, 1])
@@ -139,7 +142,7 @@ class TestingImgDataset(Dataset):
     def load_smpl_parameters(self, data_item):
         with open(data_item, 'rb') as fp:
             data = pkl.load(fp, encoding='iso-8859-1')
-            pose = np.float32(data['body_pose']).reshape((-1, ))
+            pose = np.float32(data['body_pose'])#.reshape((-1, ))
             betas = np.float32(data['betas']).reshape((-1,))
             trans = np.float32(data['global_body_translation']).reshape((1, -1))
             scale = np.float32(data['body_scale']).reshape((1, -1))
