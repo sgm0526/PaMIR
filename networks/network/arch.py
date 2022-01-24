@@ -419,7 +419,7 @@ class TexPamirNetAttention_att(BaseNetwork):
 
         k= 20
         all_pts = all_pts[:, :, :k, ]
-        all_pts_proj = all_pts[:, :, :k, ]
+        all_pts_proj = all_pts_proj[:, :, :k, ]
 
 
         """
@@ -446,8 +446,6 @@ class TexPamirNetAttention_att(BaseNetwork):
         pts = pts * 2.0  # corrects coordinates for torch in-network sampling
         all_pts = all_pts * 2.0  # corrects coordinates for torch in-network sampling
 
-
-
         h_grid = all_pts_proj[:, :,:, 0].view(batch_size, point_num, k , 1)
         v_grid = all_pts_proj[:, :,:, 1].view(batch_size, point_num, k, 1)
         grid_2d = torch.cat([h_grid, v_grid], dim=-1)
@@ -471,8 +469,6 @@ class TexPamirNetAttention_att(BaseNetwork):
         grouped_feature_ = pt_feat.permute(0,2,3,1)
         grouped_feature = torch.cat([grouped_feature_ , all_pts], -1)  # B, N , k, C+3
 
-        #import pdb; pdb.set_trace()
-
         channel_size = grouped_feature.size(-1)
         grouped_feature = grouped_feature.reshape(-1, k, channel_size)  # B* N , k, C
         selfatt_feat, _ = self.ray_attention(grouped_feature, grouped_feature, grouped_feature)  # B* N , k, C
@@ -480,15 +476,11 @@ class TexPamirNetAttention_att(BaseNetwork):
         #selfatt_feat = self.out_geometry_fc(selfatt_feat.permute(0, 2, 1)).permute(0, 2, 1)  # B* N , 1, C
         selfatt_feats = selfatt_feat.reshape(batch_size, -1, channel_size)  # B, N ,C
 
-        #pt_feat = torch.cat([grid_2d.permute(0,3,1,2), pt_feat],1)
-        #new_xyz, new_points= self.sa1(all_pts.permute(0,2,1), pt_feat.squeeze(-1))
 
         input_feat = selfatt_feats.permute(0,2,1).unsqueeze(-1) # B, C, N, 1
         pt_feat_part = grouped_feature_[:,:,0,:].permute(0,2,1).unsqueeze(-1)
-
-        #import pdb; pdb.set_trace()
         input_feat = torch.cat([pt_feat_part, input_feat], 1) # B, 2C, N, 1
-        # input_feat = pt_feat# B, C, N, 1
+
 
         point_num_part = pts.size()[1]
         h_grid_part = pts_proj[:, :, 0].view(batch_size, point_num_part, 1, 1)
@@ -498,13 +490,6 @@ class TexPamirNetAttention_att(BaseNetwork):
 
         pt_out = self.mlp(input_feat)
         pt_out  = pt_out.permute([0, 2, 3, 1])
-        # grid_2d_offset =grid_2d_part + pt_out
-        # #import pdb; pdb.set_trace()
-        #
-        # pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
-        #                               mode='bilinear', padding_mode='border')
-        # pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
-        # return pt_tex_sample, pt_tex_sample, grid_2d_offset, pt_feat_3D.squeeze()  # ,  rgb_pred
 
         pt_out = pt_out.view(batch_size, point_num_part, 4)
         pt_tex_pred = pt_out[:, :, :3]

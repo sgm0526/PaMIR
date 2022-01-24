@@ -28,6 +28,7 @@ import util.util as util
 import util.obj_io as obj_io
 import constant as const
 
+from util.pointconv_util import knn_point, index_points, farthest_point_sample, PointConvDensitySetAbstraction
 
 class EvaluatorTex(object):
     def __init__(self, device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamir_tex):
@@ -112,7 +113,7 @@ class EvaluatorTex(object):
         pts_proj = pts_proj[:, :, :2]
         return pts_proj
 
-    def forward_infer_color_value_group(self, img, vol, pts, pts_proj, group_size, uv):
+    def forward_infer_color_value_group(self, img, vol, pts, pts_proj, group_size):
         pts_group_num = (pts.size()[1] + group_size - 1) // group_size
         pts_clr = []
         grid_2d_offset = []
@@ -120,8 +121,17 @@ class EvaluatorTex(object):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
             pts_group = pts[:, (gi * group_size):((gi + 1) * group_size), :]
             pts_proj_group = pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+
+            ##
+            k = 50
+            idx = knn_point(k, pts, pts_group)  # B, N(5000), k
+            grouped_pts = index_points(pts, idx)  # B, N , k, 3
+            grouped_pts_proj = index_points(pts_proj, idx)  # B, N , k, 3
+            ##
+
+
             outputs, grid_2d_offsets = self.forward_infer_color_value(
-                img, vol, pts_group, pts_proj_group, uv)
+                img, vol, pts_group, pts_proj_group, grouped_pts, grouped_pts_proj)
             pts_clr.append(np.squeeze(outputs[0].detach().cpu().numpy()))
             grid_2d_offset.append(grid_2d_offsets[0])
         pts_clr = np.concatenate(pts_clr)
@@ -131,9 +141,9 @@ class EvaluatorTex(object):
         # import pdb; pdb.set_trace()
         return pts_clr, grid_2d_offset
 
-    def forward_infer_color_value(self, img, vol, pts, pts_proj):
+    def forward_infer_color_value(self, img, vol, pts, pts_proj,  grouped_pts, grouped_pts_proj):
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        _, clr, grid_2d_offset, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo)
+        _, clr, grid_2d_offset, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo,  grouped_pts, grouped_pts_proj)
         return clr, grid_2d_offset
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=5
+GPU_ID=4
 NAME='pamir_texture_attk20_epoch30'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
