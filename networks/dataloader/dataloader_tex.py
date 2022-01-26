@@ -43,6 +43,8 @@ from torch.utils.data import Dataset, DataLoader
 import constant
 from .utils import load_data_list, generate_cam_Rt
 
+from util.volume_rendering import *
+
 
 class TrainingImgDataset(Dataset):
     def __init__(self, dataset_dir,
@@ -60,7 +62,7 @@ class TrainingImgDataset(Dataset):
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
         self.data_aug = self.training
 
-        self.data_list = load_data_list(dataset_dir, 'data_list.txt')
+        self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
         self.len = len(self.data_list) * self.view_num_per_item
 
         # load smpl model data for usage
@@ -89,6 +91,20 @@ class TrainingImgDataset(Dataset):
         img = self.load_image(data_item, view_id)
         cam_R, cam_t = self.load_cams(data_item, view_id)
         pts, pts_clr = self.load_points(data_item, view_id, point_num)
+
+
+        ###
+        target_view_id = np.random.randint(359)
+        if target_view_id>=view_id:
+            target_view_id+=1
+        target_img = self.load_image(data_item, target_view_id)
+
+        ###
+        if target_view_id == view_id:
+            raise NotImplementedError()
+
+
+
         pts_r = self.rotate_points(pts, view_id)
         pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
         # pts_clr = pts_clr * alpha + beta
@@ -98,6 +114,7 @@ class TrainingImgDataset(Dataset):
         return_dict = {
             'model_id': model_id,
             'view_id': view_id,
+            'target_view_id': target_view_id,
             'data_item': data_item,
             'img': torch.from_numpy(img.transpose((2, 0, 1))),
             'pts': torch.from_numpy(pts_r),
@@ -109,6 +126,12 @@ class TrainingImgDataset(Dataset):
             'pose': torch.from_numpy(pose),
             'scale': torch.from_numpy(scale),
             'trans': torch.from_numpy(trans),
+            'target_img': torch.from_numpy(target_img .transpose((2, 0, 1))),
+            'cam_r': torch.from_numpy(cam_R),
+            'cam_t': torch.from_numpy(cam_t),
+            'pts_world': torch.from_numpy(pts),
+
+
         }
 
         return return_dict

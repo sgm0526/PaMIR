@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=0
-NAME='pamir_texture'
+NAME='pamir_texture_debug_nonerf'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -10,7 +10,7 @@ PRETRAINED_PAMIR_NET_CHECKPOINT='./results/pamir_geometry/checkpoints/latest.pt'
 LR=2e-4
 BATCH_SIZE=3
 LOG_DIR='./results'
-DATASET_DIR='../dataset_example'
+DATASET_DIR='/home/nas1_temp/dataset/Thuman'
 VIEW_NUM_PER_ITEM=360
 POINT_NUM=5000
 NUM_EPOCHS=2

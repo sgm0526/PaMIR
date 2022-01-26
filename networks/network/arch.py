@@ -200,6 +200,33 @@ class PamirNet(BaseNetwork):
         else:
             return self.ve(vol, intermediate_output=False)
 
+    def get_mlp_feature(self, img, vol, pts, pts_proj ):
+        batch_size = pts.size()[0]
+        point_num = pts.size()[1]
+        img_feats = self.hg(img)
+        vol_feats = self.ve(vol)
+        img_feats = img_feats[-len(vol_feats):]
+        pt_sdf_list = []
+        h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
+        v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
+        grid_2d = torch.cat([h_grid, v_grid], dim=-1)
+        pts *= 2.0  # corrects coordinates for torch in-network sampling
+        x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
+        y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
+        z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
+        grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
+
+
+        pt_feat_2D = F.grid_sample(input=img_feats[-1], grid=grid_2d, align_corners=False,
+                                   mode='bilinear', padding_mode='border')
+        pt_feat_3D = F.grid_sample(input=vol_feats[-1], grid=grid_3d, align_corners=False,
+                                   mode='bilinear', padding_mode='border')
+        pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
+        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1)
+        pt_feature = self.mlp.forward0(pt_feat)  # shape = [batch_size, channels, point_num, 1]
+        return pt_feature
+
+
 
 class PamirNetMultiview(BaseNetwork):
     def __init__(self):
@@ -388,6 +415,66 @@ class TexPamirNetAttention(BaseNetwork):
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
+class TexPamirNetAttention_nerf(BaseNetwork):
+    def __init__(self):
+        super(TexPamirNetAttention_nerf, self).__init__()
+        self.feat_ch_2D = 256
+        self.feat_ch_3D = 32
+        self.feat_ch_out = 5
+        self.feat_ch_occupancy = 128
+        self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
+        self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
+        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+self.feat_ch_occupancy, self.feat_ch_out, out_sigmoid=False ))
+
+        logging.info('#trainable params of 2d encoder = %d' %
+                     sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
+        logging.info('#trainable params of 3d encoder = %d' %
+                     sum(p.numel() for p in self.ve.parameters() if p.requires_grad))
+        logging.info('#trainable params of mlp = %d' %
+                     sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
+
+    def forward(self, img, vol, pts, pts_proj, img_feat_geo, feat_occupancy):
+        """
+        img: [batchsize * 3 (RGB) * img_h * img_w]
+        pts: [batchsize * point_num * 3 (XYZ)]
+        pts: [batchsize * 256 * point_num ]
+        """
+        batch_size = pts.size()[0]
+        point_num = pts.size()[1]
+        img_feat_tex = self.cg(img)
+        img_feat = torch.cat([img_feat_tex, img_feat_geo], dim=1)
+
+        h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
+        v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
+        grid_2d = torch.cat([h_grid, v_grid], dim=-1)
+
+        pts = pts * 2.0  # corrects coordinates for torch in-network sampling
+        x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
+        y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
+        z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
+        grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
+        vol_feat = self.ve(vol, intermediate_output=False)
+
+        pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
+                                   mode='bilinear', padding_mode='border')
+        pt_feat_3D = F.grid_sample(input=vol_feat, grid=grid_3d, align_corners=False,
+                                   mode='bilinear', padding_mode='border')
+        pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
+
+        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1)
+        pt_out = self.mlp(torch.cat([pt_feat, feat_occupancy], dim=1))
+        pt_out = pt_out.permute([0, 2, 3, 1])
+        pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
+        pt_tex_pred = pt_out[:, :, :3].sigmoid()
+        pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+        pt_tex_sigma = pt_out[:,:, 4:5]
+        ##
+
+        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
+                                      mode='bilinear', padding_mode='border')
+        pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
+        pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+        return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
 
 class TexPamirNetAttentionMultiview(BaseNetwork):
     def __init__(self):

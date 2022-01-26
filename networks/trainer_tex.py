@@ -19,7 +19,7 @@ import math
 
 from util.base_trainer import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
-from network.arch import PamirNet, TexPamirNetAttention
+from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from neural_voxelization_layer.voxelize import Voxelization
 from util.img_normalization import ImgNormalizerForResnet
@@ -29,6 +29,7 @@ from graph_cmr.models.geometric_layers import rodrigues, orthographic_projection
 import util.obj_io as obj_io
 import util.util as util
 import constant as const
+from util.volume_rendering import *
 
 
 class Trainer(BaseTrainer):
@@ -61,6 +62,7 @@ class Trainer(BaseTrainer):
         # pamir_net
         self.pamir_net = PamirNet().to(self.device)
         self.pamir_tex_net = TexPamirNetAttention().to(self.device)
+        self.pamir_tex_net_nerf = TexPamirNetAttention_nerf().to(self.device)
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
@@ -113,6 +115,47 @@ class Trainer(BaseTrainer):
         gt_scale = input_batch['scale']
         gt_trans = input_batch['trans']
 
+        target_img = input_batch['target_img']
+
+        ###
+        batch_size = pts.size(0)
+        num_steps = 12
+        img_size = const.img_res
+        cam_c = img_size / 2
+        fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
+        fov_degree = fov*180/math.pi
+        ray_start = 1 - 0.87
+        ray_end = 1 + 0.87
+
+        num_ray = 1000
+        ## todo hierarchical sampling
+
+        points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
+                                                               resolution=(img_size, img_size),
+                                                               device=self.device, fov=fov_degree, ray_start=ray_start,
+                                                               ray_end=ray_end)  # batch_size, pixels, num_steps, 1
+
+        #import pdb; pdb.set_trace()
+        view_diff = input_batch['view_id'] - input_batch['target_view_id']
+
+
+        # 1, img_size*img_size, num_steps, 3
+        points_cam[:,:,:,2] -=1
+        points_cam = self.rotate_points(points_cam, view_diff)
+        ray_index = np.random.randint(0, img_size * img_size, num_ray)
+        sampled_points = points_cam[:,ray_index]
+
+        ##
+        sampled_points_proj =sampled_points.clone()
+        sampled_points_proj[..., 2] += 1 # add cam_t
+        sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
+        sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
+        sampled_points_proj = sampled_points_proj[..., :2]
+
+        sampled_points = sampled_points.reshape(batch_size, -1, 3)
+        sampled_points_proj= sampled_points_proj.reshape(batch_size, -1, 2)
+
+
         batch_size, pts_num = pts.size()[:2]
         losses = dict()
 
@@ -120,10 +163,26 @@ class Trainer(BaseTrainer):
             gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
             vol = self.voxelization(gt_vert_cam)    # we simply use ground-truth SMPL for when training texture module
             img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
+            feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts, pts_proj)
 
-        output_clr_, output_clr, output_att, smpl_feat = self.pamir_tex_net.forward(
-            img, vol, pts, pts_proj, img_feat_geo)
+        nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net_nerf.forward(
+            img, vol, sampled_points, sampled_points_proj, img_feat_geo,  nerf_feat_occupancy)
+
+
+        all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+        pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1), z_vals[:, ray_index], device=self.device)
+
+
+        gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
+        gt_clr_nerf = gt_clr_nerf[:,ray_index]
+
+        output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net_nerf.forward(
+            img, vol, pts, pts_proj, img_feat_geo, feat_occupancy)
+
+        #import pdb; pdb.set_trace()
         losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
+        #losses['nerf_tex'] = self.tex_loss(pixels,gt_clr_nerf)
         losses['att'] = self.attention_loss(output_att)
 
         # calculates total loss
@@ -149,11 +208,7 @@ class Trainer(BaseTrainer):
                 param_group['lr'] = learning_rate
         return losses
 
-    def calculate_gt_rotmat(self, gt_pose):
-        gt_rotmat = rodrigues(gt_pose.view((-1, 3)))
-        gt_rotmat = gt_rotmat.view((self.options.batch_size, -1, 3, 3))
-        gt_rotmat[:, 0, 1:3, :] = gt_rotmat[:, 0, 1:3, :] * -1.0  # global rotation
-        return gt_rotmat
+
 
     def tex_loss(self, pred_clr, gt_clr, att=None):
         """Computes per-sample loss of the occupancy value"""
@@ -197,3 +252,13 @@ class Trainer(BaseTrainer):
             self.pamir_net.load_state_dict(data['pamir_net'])
         else:
             raise IOError('Failed to load pamir_net model from the specified checkpoint!!')
+
+    def rotate_points(self, pts, view_id, view_num_per_item=360):
+        # rotate points to current view
+        angle = 2 * np.pi * view_id / view_num_per_item
+        pts_rot = torch.zeros_like(pts)
+        angle = angle[:,None,None]
+        pts_rot[..., 0] = pts[..., 0] * angle.cos() - pts[..., 2] * angle.sin()
+        pts_rot[..., 1] = pts[..., 1]
+        pts_rot[..., 2] = pts[..., 0] * angle.sin() + pts[..., 2] * angle.cos()
+        return pts_rot
