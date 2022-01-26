@@ -61,8 +61,8 @@ class Trainer(BaseTrainer):
 
         # pamir_net
         self.pamir_net = PamirNet().to(self.device)
-        self.pamir_tex_net = TexPamirNetAttention().to(self.device)
-        self.pamir_tex_net_nerf = TexPamirNetAttention_nerf().to(self.device)
+        self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
+
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
@@ -119,7 +119,7 @@ class Trainer(BaseTrainer):
 
         ###
         batch_size = pts.size(0)
-        num_steps = 12
+        num_steps = 24
         img_size = const.img_res
         cam_c = img_size / 2
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
@@ -166,7 +166,7 @@ class Trainer(BaseTrainer):
             nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
             feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts, pts_proj)
 
-        nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net_nerf.forward(
+        nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
             img, vol, sampled_points, sampled_points_proj, img_feat_geo,  nerf_feat_occupancy)
 
 
@@ -177,12 +177,12 @@ class Trainer(BaseTrainer):
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
         gt_clr_nerf = gt_clr_nerf[:,ray_index]
 
-        output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net_nerf.forward(
+        output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(
             img, vol, pts, pts_proj, img_feat_geo, feat_occupancy)
 
         #import pdb; pdb.set_trace()
         losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
-        #losses['nerf_tex'] = self.tex_loss(pixels,gt_clr_nerf)
+        losses['nerf_tex'] = self.tex_loss(pixels,gt_clr_nerf)
         losses['att'] = self.attention_loss(output_att)
 
         # calculates total loss
