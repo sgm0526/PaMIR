@@ -386,6 +386,7 @@ class TexPamirNetAttention(BaseNetwork):
                                       mode='bilinear', padding_mode='border')
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+        #pt_tex = pt_tex_att.repeat(1,1,1,3)
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
 from util.pointconv_util import knn_point, index_points, farthest_point_sample, PointConvDensitySetAbstraction,PositionalEncoding, MultiHeadAttention

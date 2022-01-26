@@ -43,6 +43,7 @@ from torch.utils.data import Dataset, DataLoader
 import constant
 from .utils import load_data_list, generate_cam_Rt
 from util.pointconv_util import knn_point, index_points, farthest_point_sample, PointConvDensitySetAbstraction,PositionalEncoding, MultiHeadAttention
+from util.volume_rendering import *
 
 class TrainingImgDataset(Dataset):
     def __init__(self, dataset_dir,
@@ -89,6 +90,26 @@ class TrainingImgDataset(Dataset):
         img = self.load_image(data_item, view_id)
         cam_R, cam_t = self.load_cams(data_item, view_id)
         pts, pts_clr,all_pts = self.load_points(data_item, view_id, point_num)
+
+        ##
+        # num_steps = 48
+        # img_size = constant.img_res
+        # fov = torch
+        #
+        # points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
+        #                                                        resolution=(img_size, img_size),
+        #                                                        device=self.device, fov=fov, ray_start=ray_start,
+        #                                                        ray_end=ray_end)  # batch_size, pixels, num_steps, 1
+
+
+
+
+        ##
+
+
+
+
+
         pts_r = self.rotate_points(pts, view_id)
         pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
         # pts_clr = pts_clr * alpha + beta

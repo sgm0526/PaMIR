@@ -18,7 +18,7 @@ import glob
 import logging
 import math
 
-from network.arch import PamirNet, TexPamirNetAttention
+from network.arch import PamirNet, TexPamirNetAttention,  TexPamirNetAttention_att
 from neural_voxelization_layer.voxelize import Voxelization
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from util.img_normalization import ImgNormalizerForResnet
@@ -132,7 +132,7 @@ class EvaluatorTex(object):
                     img, vol, pts_group, pts_proj_group, grouped_pts, grouped_pts_proj)
             else:
                 outputs, grid_2d_offsets = self.forward_infer_color_value(
-                    img, vol, pts_group, pts_proj_group)
+                    img, vol, pts_group, pts_proj_group, None, None)
 
 
             pts_clr.append(np.squeeze(outputs[0].detach().cpu().numpy()))

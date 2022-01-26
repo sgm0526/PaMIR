@@ -53,6 +53,7 @@ class TestingImgDataset(Dataset):
         self.dataset_dir = dataset_dir
         data_list = glob.glob(os.path.join(dataset_dir, '*.png')) + glob.glob(os.path.join(dataset_dir, '*.jpg'))
         data_list = [d for d in data_list if not d.endswith('_mask.png')]
+        data_list = [d for d in data_list if not d.endswith('_uv.png')]
         self.data_list = sorted(data_list)
         self.len = len(self.data_list)
         self.white_bg = white_bg
