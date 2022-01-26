@@ -97,11 +97,14 @@ class TrainingImgDataset(Dataset):
         target_view_id = np.random.randint(359)
         if target_view_id>=view_id:
             target_view_id+=1
+
+        #if target_view_id == view_id:
+        #    raise NotImplementedError()
+        target_view_id=view_id
         target_img = self.load_image(data_item, target_view_id)
 
         ###
-        if target_view_id == view_id:
-            raise NotImplementedError()
+
 
 
 
@@ -114,7 +117,6 @@ class TrainingImgDataset(Dataset):
         return_dict = {
             'model_id': model_id,
             'view_id': view_id,
-            'target_view_id': target_view_id,
             'data_item': data_item,
             'img': torch.from_numpy(img.transpose((2, 0, 1))),
             'pts': torch.from_numpy(pts_r),
@@ -126,6 +128,7 @@ class TrainingImgDataset(Dataset):
             'pose': torch.from_numpy(pose),
             'scale': torch.from_numpy(scale),
             'trans': torch.from_numpy(trans),
+            'target_view_id': target_view_id,
             'target_img': torch.from_numpy(target_img .transpose((2, 0, 1))),
             'cam_r': torch.from_numpy(cam_R),
             'cam_t': torch.from_numpy(cam_t),
