@@ -99,7 +99,7 @@ class EvaluatorTex(object):
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
         # 1, img_size*img_size, num_steps, 3
-        points_cam[:, :, :, 2] -= cam_tz
+        points_cam[:, :, :, 2] += cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
 
 
@@ -171,7 +171,11 @@ class EvaluatorTex(object):
         return pts_rot
 
     def project_points(self, sampled_points, cam_f, cam_c, cam_tz):
+
         sampled_points_proj = sampled_points.clone()
+        sampled_points_proj[..., 1] *= -1
+        sampled_points_proj[..., 2] *= -1
+
         sampled_points_proj[..., 2] += cam_tz  # add cam_t
         sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
         sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)

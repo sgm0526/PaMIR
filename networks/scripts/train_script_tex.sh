@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=5
-NAME='pamir_texture_nerf_1000_24_recontarget'
+GPU_ID=7
+NAME='pamir_texture_nerf_1000_24_recontarget1_debug'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'

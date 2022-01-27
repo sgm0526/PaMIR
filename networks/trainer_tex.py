@@ -128,8 +128,8 @@ class Trainer(BaseTrainer):
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov*180/math.pi
 
-        ray_start = cam_tz - 0.87 #(
-        ray_end = cam_tz + 0.87
+        ray_start = cam_tz - 0.1
+        ray_end = cam_tz + 0.1
 
         num_ray = 1000
         ## todo hierarchical sampling
@@ -144,7 +144,7 @@ class Trainer(BaseTrainer):
         view_diff = input_batch['view_id'] - input_batch['target_view_id']
         #import pdb;
         #pdb.set_trace()
-        #pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,mode='bilinear', padding_mode='border')
+
 
         # 1, img_size*img_size, num_steps, 3
         points_cam[:,:,:,2] +=cam_tz
@@ -186,6 +186,21 @@ class Trainer(BaseTrainer):
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
         gt_clr_nerf = gt_clr_nerf[:,ray_index]
         losses['nerf_tex'] = self.tex_loss(pixels, gt_clr_nerf)
+
+
+
+        ##
+        points_cam_check = self.rotate_points(points_cam, 180*torch.ones(batch_size).cuda())
+        points_cam_check_proj = self.project_points(points_cam_check, cam_f, cam_c, cam_tz)
+        points_cam_check_proj = points_cam_check_proj[:,:,0,:].reshape(batch_size, img_size, img_size,2)
+        check_img = F.grid_sample(input=img, grid=points_cam_check_proj, align_corners=False,mode='bilinear', padding_mode='border')
+        import torchvision
+        torchvision.utils.save_image(check_img, './check_img_0.1_180.png')
+
+
+
+
+        import pdb; pdb.set_trace()
 
 
 
