@@ -69,7 +69,7 @@ class EvaluatorTex(object):
                     self.models_dict[model].load_state_dict(checkpoint[model])
                     logging.info('Loading pamir_tex_net from ' + checkpoint_file)
 
-    def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
+    def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans, img_ori):
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
@@ -84,7 +84,7 @@ class EvaluatorTex(object):
         pts_proj = self.forward_project_points(
             pts, cam_r, cam_t, cam_f, img.size(2))
         clr = self.forward_infer_color_value_group(
-            img, vol, pts, pts_proj, group_size)
+            img, vol, pts, pts_proj, group_size, img_ori)
         return clr
 
     def test_att_pifu(self, img, mesh_v, betas, pose, scale, trans):
@@ -112,7 +112,7 @@ class EvaluatorTex(object):
         pts_proj = pts_proj[:, :, :2]
         return pts_proj
 
-    def forward_infer_color_value_group(self, img, vol, pts, pts_proj, group_size):
+    def forward_infer_color_value_group(self, img, vol, pts, pts_proj, group_size, img_ori):
         pts_group_num = (pts.size()[1] + group_size - 1) // group_size
         pts_clr = []
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
@@ -120,15 +120,15 @@ class EvaluatorTex(object):
             pts_group = pts[:, (gi * group_size):((gi + 1) * group_size), :]
             pts_proj_group = pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
             outputs = self.forward_infer_color_value(
-                img, vol, pts_group, pts_proj_group)
+                img, vol, pts_group, pts_proj_group, img_ori)
             pts_clr.append(np.squeeze(outputs[0].detach().cpu().numpy()))
         pts_clr = np.concatenate(pts_clr)
         pts_clr = np.array(pts_clr)
         return pts_clr
 
-    def forward_infer_color_value(self, img, vol, pts, pts_proj):
+    def forward_infer_color_value(self, img, vol, pts, pts_proj, img_ori):
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        _, clr, _, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo)
+        _, clr, _, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo, img_ori)
         return clr
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):

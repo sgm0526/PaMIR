@@ -348,7 +348,7 @@ class TexPamirNetAttention(BaseNetwork):
         logging.info('#trainable params of mlp = %d' %
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
-    def forward(self, img, vol, pts, pts_proj, img_feat_geo):
+    def forward(self, img, vol, pts, pts_proj, img_feat_geo, img_ori):
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
@@ -382,7 +382,8 @@ class TexPamirNetAttention(BaseNetwork):
         pt_out = pt_out.view(batch_size, point_num, 4)
         pt_tex_pred = pt_out[:, :, :3]
         pt_tex_att = pt_out[:, :, 3:]
-        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
+        # import pdb; pdb.set_trace()
+        pt_tex_sample = F.grid_sample(input=img_ori, grid=grid_2d, align_corners=False,
                                       mode='bilinear', padding_mode='border')
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred

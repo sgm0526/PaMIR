@@ -8,7 +8,7 @@ from tqdm import tqdm
 from util import util
 from util import obj_io
 
-res = 1024
+res = 512
 # constant에서도 바꿔야함
 
 
@@ -206,9 +206,9 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
             raise FileNotFoundError('Cannot found SMPL parameters! You need to run PaMIR-geometry first!')
         if not ('mesh_vert' in batch and 'mesh_face' in batch):
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
-
+        import pdb; pdb.set_trace()
         mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
-                                             batch['pose'], batch['scale'], batch['trans'])
+                                             batch['pose'], batch['scale'], batch['trans'], batch['img_ori'])
         # import pdb; pdb.set_trace()
 
         img_dir = batch['img_dir'][0]
@@ -223,8 +223,8 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
 if __name__ == '__main__':
     iternum=50
-    input_image_dir = './results/THuman_hr_test2/'
-    output_dir = './results/THuman_hr_test2/'
+    input_image_dir = './results/sim/'
+    output_dir = './results/sim/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -243,11 +243,11 @@ if __name__ == '__main__':
     #                                pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt',
     #                                iternum=iternum)
 
-    main_test_wo_gt_smpl_with_optm_wo_key(input_image_dir,
-                                   output_dir,
-                                   pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
-                                   pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt',
-                                   iternum=iternum)
+    # main_test_wo_gt_smpl_with_optm_wo_key(input_image_dir,
+    #                                output_dir,
+    #                                pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
+    #                                pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt',
+    #                                iternum=iternum)
 
     # main_test_wo_gt_smpl_wo_optm(input_image_dir,
     #                               output_dir,

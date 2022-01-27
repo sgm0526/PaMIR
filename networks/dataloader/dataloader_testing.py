@@ -74,12 +74,13 @@ class TestingImgDataset(Dataset):
         data_item = self.data_list[item]
         data_fd, img_fname = os.path.split(data_item)
 
-        img = self.load_image(data_item)
+        img, img_ori = self.load_image(data_item)
 
         return_dict = {
             'img_id': item,
             'img_dir': data_item,
             'img': torch.from_numpy(img.transpose((2, 0, 1))),
+            'img_ori': torch.from_numpy(img_ori.transpose((2, 0, 1))),
         }
 
         kpt_fname = data_item[:-4] + '_keypoints.json'
@@ -127,6 +128,8 @@ class TestingImgDataset(Dataset):
             raise RuntimeError('Failed to load mask for: ' + data_item)
 
         # assert img.shape[0] == self.img_h and img.shape[1] == self.img_w
+        img_ori = img.copy()
+        msk_ori = msk.copy()
         if img.shape[0] != self.img_h:
             img = cv.resize(img, (self.img_w, self.img_h))
             msk = cv.resize(msk, (self.img_w, self.img_h))
@@ -134,10 +137,16 @@ class TestingImgDataset(Dataset):
         msk = np.float32(msk) / 255
         msk = np.reshape(msk, [self.img_h, self.img_w, 1])
         img = img * msk
+        img_ori = np.float32(cv.cvtColor(img_ori, cv.COLOR_RGB2BGR)) / 255
+        msk_ori = np.float32(msk_ori) / 255
+        msk_ori = msk_ori[..., None]
+        # msk_ori = np.reshape(msk_ori, [self.img_h, self.img_w, 1])
+        img_ori = img_ori * msk_ori
         if self.white_bg:
             img = img + (1 - msk)
+            img_ori = img_ori * msk_ori
         # img = cv.resize(img, (self.img_w, self.img_h))
-        return img
+        return img, img_ori
 
     def load_smpl_parameters(self, data_item):
         with open(data_item, 'rb') as fp:
