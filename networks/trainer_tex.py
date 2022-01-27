@@ -147,7 +147,7 @@ class Trainer(BaseTrainer):
         #pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,mode='bilinear', padding_mode='border')
 
         # 1, img_size*img_size, num_steps, 3
-        points_cam[:,:,:,2] -=cam_tz
+        points_cam[:,:,:,2] +=cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
         ray_index = np.random.randint(0, img_size * img_size, num_ray)
         sampled_points =points_cam_source[:,ray_index]
@@ -186,6 +186,7 @@ class Trainer(BaseTrainer):
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
         gt_clr_nerf = gt_clr_nerf[:,ray_index]
         losses['nerf_tex'] = self.tex_loss(pixels, gt_clr_nerf)
+
 
 
         # calculates total loss
@@ -271,7 +272,12 @@ class Trainer(BaseTrainer):
         return pts_rot
 
     def project_points(self, sampled_points, cam_f, cam_c, cam_tz):
+
+
         sampled_points_proj = sampled_points.clone()
+        sampled_points_proj[..., 1]*=-1
+        sampled_points_proj[..., 2]*=-1
+
         sampled_points_proj[..., 2] += cam_tz  # add cam_t
         sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
         sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
