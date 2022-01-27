@@ -62,7 +62,7 @@ class TrainingImgDataset(Dataset):
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
         self.data_aug = self.training
 
-        self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
+        self.data_list = load_data_list(dataset_dir, 'data_list_0001.txt')
         self.len = len(self.data_list) * self.view_num_per_item
 
         # load smpl model data for usage

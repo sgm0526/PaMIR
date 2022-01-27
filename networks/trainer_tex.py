@@ -190,12 +190,12 @@ class Trainer(BaseTrainer):
 
 
         ##
-        points_cam_check = self.rotate_points(points_cam, 180*torch.ones(batch_size).cuda())
-        points_cam_check_proj = self.project_points(points_cam_check, cam_f, cam_c, cam_tz)
-        points_cam_check_proj = points_cam_check_proj[:,:,0,:].reshape(batch_size, img_size, img_size,2)
-        check_img = F.grid_sample(input=img, grid=points_cam_check_proj, align_corners=False,mode='bilinear', padding_mode='border')
-        import torchvision
-        torchvision.utils.save_image(check_img, './check_img_0.1_180.png')
+        # points_cam_check = self.rotate_points(points_cam, 180*torch.ones(batch_size).cuda())
+        # points_cam_check_proj = self.project_points(points_cam_check, cam_f, cam_c, cam_tz)
+        # points_cam_check_proj = points_cam_check_proj[:,:,0,:].reshape(batch_size, img_size, img_size,2)
+        # check_img = F.grid_sample(input=img, grid=points_cam_check_proj, align_corners=False,mode='bilinear', padding_mode='border')
+        # import torchvision
+        # torchvision.utils.save_image(check_img, './check_img_0.1_180.png')
 
         #import pdb; pdb.set_trace()
 

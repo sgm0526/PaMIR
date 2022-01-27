@@ -149,7 +149,7 @@ class EvaluatorTex(object):
         pts_clr = torch.cat(pts_clr, dim=1)[0]
         pts_clr = pts_clr.reshape(img_size,img_size,3)
         pts_clr = pts_clr.permute(2,0,1)
-        save_image(pts_clr, f'./0612_nerf_source_{view_diff[0]}.png')
+        save_image(pts_clr, f'./0900_nerf_source_{view_diff[0]}.png')
 
 
 
