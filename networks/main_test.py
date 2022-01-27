@@ -101,6 +101,12 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         if not ('mesh_vert' in batch and 'mesh_face' in batch):
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
+        for i in range(0, 370, 10 ):
+
+
+            nerf_color = evaluater.test_nerf_target(batch['img'], batch['betas'],
+                                             batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
+
         mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'])
 
@@ -117,7 +123,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 if __name__ == '__main__':
     iternum=50
     input_image_dir = './results/test_data/'
-    output_dir = './results/test_data/'
+    output_dir = './results/test_data_debug/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -130,12 +136,12 @@ if __name__ == '__main__':
     #                        pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
     #! Otherwise, use this function to predict and optimize a SMPL model for the input image
-    main_test_wo_gt_smpl_with_optm(input_image_dir,
-                                   output_dir,
-                                   pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
-                                   pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
+    # main_test_wo_gt_smpl_with_optm(input_image_dir,
+    #                                output_dir,
+    #                                pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
+    #                                pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
     main_test_texture(output_dir,
                       output_dir,
                       pretrained_checkpoint_pamir='./results/pamir_geometry/checkpoints/latest.pt',
-                      pretrained_checkpoint_pamirtex='./results/pamir_texture/checkpoints/latest.pt')
+                      pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_1000_24_reconinput_camtz/checkpoints/latest.pt')

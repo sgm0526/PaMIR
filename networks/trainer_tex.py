@@ -124,11 +124,12 @@ class Trainer(BaseTrainer):
         batch_size = pts.size(0)
         num_steps = 24
         img_size = const.img_res
-        cam_c = img_size / 2
+        #cam_c = img_size / 2
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov*180/math.pi
-        ray_start = 1 - 0.87
-        ray_end = 1 + 0.87
+
+        ray_start = cam_tz - 0.87 #(
+        ray_end = cam_tz + 0.87
 
         num_ray = 1000
         ## todo hierarchical sampling
@@ -141,20 +142,18 @@ class Trainer(BaseTrainer):
 
         #import pdb; pdb.set_trace()
         view_diff = input_batch['view_id'] - input_batch['target_view_id']
-
+        #import pdb;
+        #pdb.set_trace()
+        #pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,mode='bilinear', padding_mode='border')
 
         # 1, img_size*img_size, num_steps, 3
-        points_cam[:,:,:,2] -=1
-        points_cam = self.rotate_points(points_cam, view_diff)
+        points_cam[:,:,:,2] -=cam_tz
+        points_cam_source = self.rotate_points(points_cam, view_diff)
         ray_index = np.random.randint(0, img_size * img_size, num_ray)
-        sampled_points = points_cam[:,ray_index]
+        sampled_points =points_cam_source[:,ray_index]
 
         ##
-        sampled_points_proj =sampled_points.clone()
-        sampled_points_proj[..., 2] += 1 # add cam_t
-        sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
-        sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
-        sampled_points_proj = sampled_points_proj[..., :2]
+        sampled_points_proj  = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
 
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj= sampled_points_proj.reshape(batch_size, -1, 2)
@@ -187,9 +186,6 @@ class Trainer(BaseTrainer):
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
         gt_clr_nerf = gt_clr_nerf[:,ray_index]
         losses['nerf_tex'] = self.tex_loss(pixels, gt_clr_nerf)
-
-        #import pdb; pdb.set_trace()
-
 
 
         # calculates total loss
@@ -264,8 +260,20 @@ class Trainer(BaseTrainer):
         # rotate points to current view
         angle = 2 * np.pi * view_id / view_num_per_item
         pts_rot = torch.zeros_like(pts)
-        angle = angle[:,None,None]
+        if len(pts.size())==4:
+            angle = angle[:, None, None]
+        else:
+            angle= angle[:, None]
+
         pts_rot[..., 0] = pts[..., 0] * angle.cos() - pts[..., 2] * angle.sin()
         pts_rot[..., 1] = pts[..., 1]
         pts_rot[..., 2] = pts[..., 0] * angle.sin() + pts[..., 2] * angle.cos()
         return pts_rot
+
+    def project_points(self, sampled_points, cam_f, cam_c, cam_tz):
+        sampled_points_proj = sampled_points.clone()
+        sampled_points_proj[..., 2] += cam_tz  # add cam_t
+        sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
+        sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
+        sampled_points_proj = sampled_points_proj[..., :2]
+        return sampled_points_proj

@@ -98,9 +98,9 @@ class TrainingImgDataset(Dataset):
         if target_view_id>=view_id:
             target_view_id+=1
 
-        #if target_view_id == view_id:
-        #    raise NotImplementedError()
-        target_view_id=view_id
+        if target_view_id == view_id:
+            raise NotImplementedError()
+        #target_view_id=view_id
         target_img = self.load_image(data_item, target_view_id)
 
         ###
