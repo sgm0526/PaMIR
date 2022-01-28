@@ -138,6 +138,8 @@ class Trainer(BaseTrainer):
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
+        #points_cam_check = rays_d_cam.unsqueeze(-2).repeat(1,1,num_steps,1)*z_vals
+
 
         view_diff = input_batch['view_id'] - input_batch['target_view_id']
 
@@ -150,6 +152,8 @@ class Trainer(BaseTrainer):
         sampled_points =points_cam_source[:,ray_index]
         sampled_z_vals = z_vals[:,ray_index]
         sampled_rays_d = rays_d_cam_source[:, ray_index]
+        sampled_rays_d_world = rays_d_cam[:, ray_index]
+
 
         ##
         sampled_points_proj  = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
@@ -179,11 +183,17 @@ class Trainer(BaseTrainer):
                 std = 0.1
                 std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
                 fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
-                sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-                fine_points = sampled_rays_d * fine_z_vals[..., None]
+
+                sampled_rays_d_world =  sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                fine_points = sampled_rays_d_world * fine_z_vals[..., None]
                 fine_points[:, :, :, 2] += cam_tz
-                import pdb;
-                pdb.set_trace()
+                #import pdb;  pdb.set_trace()
+                fine_points= self.rotate_points(fine_points, view_diff)
+                #sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                #fine_points = sampled_rays_d * fine_z_vals[..., None]
+                #fine_points[:, :, :, 2] += cam_tz
+
+
                 fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
                 fine_points = fine_points.reshape(batch_size, num_ray * num_steps, 3)
                 fine_points_proj = fine_points_proj.reshape(batch_size, num_ray * num_steps, 2)
