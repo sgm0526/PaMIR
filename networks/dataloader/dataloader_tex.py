@@ -62,7 +62,7 @@ class TrainingImgDataset(Dataset):
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
         self.data_aug = self.training
 
-        self.data_list = load_data_list(dataset_dir, 'data_list_0001.txt')
+        self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
         self.len = len(self.data_list) * self.view_num_per_item
 
         # load smpl model data for usage
@@ -158,6 +158,7 @@ class TrainingImgDataset(Dataset):
         if len(msk.shape) == 2:
             msk = np.expand_dims(msk, axis=-1)
         img = img * msk + (1 - msk)  # white background
+        img_black = img * msk
         # img = cv.resize(img, (self.img_w, self.img_h))
         return img
 

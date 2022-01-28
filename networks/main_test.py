@@ -145,4 +145,4 @@ if __name__ == '__main__':
     main_test_texture(output_dir,
                       output_dir,
                       pretrained_checkpoint_pamir='./results/pamir_geometry/checkpoints/latest.pt',
-                      pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_1000_24_recontarget1_nolight_0001/checkpoints/latest.pt')
+                      pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_1000_24_recontarget1_nolight_0001_fine_white/checkpoints/latest.pt')
