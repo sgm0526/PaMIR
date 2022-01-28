@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=1
-NAME='pamir_texture_nerf_0129_1000_24_fine_coord'
+GPU_ID=6
+NAME='pamir_texture_nerf_0129_1000_24_fine'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'

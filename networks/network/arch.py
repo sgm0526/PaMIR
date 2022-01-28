@@ -473,8 +473,11 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
-        self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+self.feat_ch_occupancy+ num_freq*2*3+3, self.feat_ch_out, out_sigmoid=False ))
+        #self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
+        self.add_module('mlp',
+                        MLP(256 + self.feat_ch_2D + self.feat_ch_3D + self.feat_ch_occupancy ,
+                            self.feat_ch_out, out_sigmoid=False))
+        #self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+self.feat_ch_occupancy+ num_freq*2*3+3, self.feat_ch_out, out_sigmoid=False ))
 
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
@@ -515,13 +518,13 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
 
         ##add coordinate
-        pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
+        #pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
 
         #import pdb; pdb.set_trace()
 
 
 
-        pt_out = self.mlp(torch.cat([pt_feat, feat_occupancy, pts_pe.permute(0,2,1).unsqueeze(-1)], dim=1))
+        pt_out = self.mlp(torch.cat([pt_feat, feat_occupancy], dim=1))
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()
