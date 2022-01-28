@@ -175,29 +175,33 @@ class EvaluatorTex(object):
                         img, vol, all_points.reshape(batch_size, num_ray_part * num_steps * 2, 3),
                         all_points_proj.reshape(batch_size, num_ray_part * num_steps * 2, 2), img_feat_geo,
                         all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray_part * num_steps * 2, 1))
-                    all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+                    all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
                     pixels, depth, weights = fancy_integration(
                         all_outputs.reshape(batch_size, num_ray_part, num_steps * 2, -1),
                         all_z_vals, device=self.device, white_back=True)
+                    pixels_pred = pixels[..., :3]
+                    pixels_final = pixels[..., 3:6]
                 else:
                     nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                         img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
 
-                    all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+                    all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
                     pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray_part, num_steps, -1),
                                                                sampled_z_vals, device=self.device, white_back=True)
+                    pixels_pred = pixels[..., :3]
+                    pixels_final = pixels[..., 3:6]
 
                 #pixels 1, group_size, 3
 
 
             ##
 
-            pts_clr.append(pixels.detach().cpu())
+            pts_clr.append(pixels_final.detach().cpu())
 
         pts_clr = torch.cat(pts_clr, dim=1)[0]
         pts_clr = pts_clr.reshape(img_size,img_size,3)
         pts_clr = pts_clr.permute(2,0,1)
-        save_image(pts_clr, f'./0180244_nerf_source_{view_diff[0]}.png')
+        save_image(pts_clr, f'./01280906_nerf_source_{view_diff[0]}.png')
 
 
 

@@ -225,25 +225,29 @@ class Trainer(BaseTrainer):
                 img, vol, all_points.reshape(batch_size, num_ray * num_steps * 2, 3),
                 all_points_proj.reshape(batch_size, num_ray * num_steps * 2, 2), img_feat_geo,
                 all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray * num_steps * 2, 1))
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
             pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
                                                        all_z_vals, device=self.device, white_back=True)
+            pixels_pred = pixels[...,:3]
+            pixels_final =pixels[...,3:6]
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
 
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            all_outputs = torch.cat([nerf_output_clr_,nerf_output_clr, nerf_output_sigma], dim=-1)
             pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                        sampled_z_vals, device=self.device, white_back=True)
-
-
+            pixels_pred = pixels[..., :3]
+            pixels_final = pixels[..., 3:6]
 
 
 
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
         gt_clr_nerf = gt_clr_nerf[:,ray_index]
-        losses['nerf_tex'] = self.tex_loss(pixels, gt_clr_nerf)
 
+
+        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
+        losses['nerf_tex_final'] = self.tex_loss(pixels_final, gt_clr_nerf)
 
 
         ##

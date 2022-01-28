@@ -122,8 +122,8 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
 if __name__ == '__main__':
     iternum=50
-    input_image_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0001/'
-    output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0001_debug/'
+    input_image_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data/'
+    output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_debug/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -145,4 +145,4 @@ if __name__ == '__main__':
     main_test_texture(output_dir,
                       output_dir,
                       pretrained_checkpoint_pamir='./results/pamir_geometry/checkpoints/latest.pt',
-                      pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_1000_24_recontarget1_nolight_0001_fine_white/checkpoints/latest.pt')
+                      pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_0129_1000_24_fine_coord/checkpoints/latest.pt')

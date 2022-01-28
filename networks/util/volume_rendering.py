@@ -36,8 +36,8 @@ def torch_dot(x: torch.Tensor, y: torch.Tensor):
 def fancy_integration(rgb_sigma, z_vals, device, noise_std=0.5, last_back=False, white_back=False, clamp_mode='relu', fill_mode=None):
     """Performs NeRF volumetric rendering."""
 
-    rgbs = rgb_sigma[..., :3]
-    sigmas = rgb_sigma[..., 3:]
+    rgbs = rgb_sigma[..., :-1]
+    sigmas = rgb_sigma[..., -1:]
 
     deltas = z_vals[:, :, 1:] - z_vals[:, :, :-1]
     delta_inf = 1e10 * torch.ones_like(deltas[:, :, :1])
