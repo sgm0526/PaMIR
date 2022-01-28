@@ -116,7 +116,7 @@ class EvaluatorTex(object):
             sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
             sampled_points_proj=   points_cam_source_proj[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
             sampled_z_vals = z_vals[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
-            sampled_rays_d = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
+            sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
             num_ray_part = sampled_points.size(1)
             #num_ray -> num_ray_part
@@ -142,9 +142,12 @@ class EvaluatorTex(object):
                     std = 0.1
                     std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1)
                     fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
-                    sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-                    fine_points = sampled_rays_d * fine_z_vals[..., None]
+
+                    sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                    fine_points = sampled_rays_d_world * fine_z_vals[..., None]
                     fine_points[:, :, :, 2] += cam_tz
+                    fine_points = self.rotate_points(fine_points, view_diff)
+
                     fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
                     fine_points = fine_points.reshape(batch_size, num_ray_part * num_steps, 3)
                     fine_points_proj = fine_points_proj.reshape(batch_size, num_ray_part * num_steps, 2)

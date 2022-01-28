@@ -147,15 +147,13 @@ class Trainer(BaseTrainer):
         # 1, img_size*img_size, num_steps, 3
         points_cam[:,:,:,2] +=cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
-        rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
         ray_index = np.random.randint(0, img_size * img_size, num_ray)
         sampled_points =points_cam_source[:,ray_index]
         sampled_z_vals = z_vals[:,ray_index]
-        sampled_rays_d = rays_d_cam_source[:, ray_index]
+        # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
+        #sampled_rays_d = rays_d_cam_source[:, ray_index]
         sampled_rays_d_world = rays_d_cam[:, ray_index]
 
-
-        ##
         sampled_points_proj  = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
 
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
@@ -187,7 +185,6 @@ class Trainer(BaseTrainer):
                 sampled_rays_d_world =  sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                 fine_points = sampled_rays_d_world * fine_z_vals[..., None]
                 fine_points[:, :, :, 2] += cam_tz
-                #import pdb;  pdb.set_trace()
                 fine_points= self.rotate_points(fine_points, view_diff)
                 #sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                 #fine_points = sampled_rays_d * fine_z_vals[..., None]

@@ -213,7 +213,7 @@ class PamirNet(BaseNetwork):
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
         v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
         grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-        pts *= 2.0  # corrects coordinates for torch in-network sampling
+        pts=pts*2.0  # corrects coordinates for torch in-network sampling
         x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
         y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
         z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
@@ -258,7 +258,7 @@ class PamirNet(BaseNetwork):
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
         v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
         grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-        pts *= 2.0  # corrects coordinates for torch in-network sampling
+        pts=pts*2.0  # corrects coordinates for torch in-network sampling
         x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
         y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
         z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
@@ -310,7 +310,7 @@ class PamirNetMultiview(BaseNetwork):
         h_grid = pts_proj[:, :, 0].view(view_num, point_num, 1, 1)
         v_grid = pts_proj[:, :, 1].view(view_num, point_num, 1, 1)
         grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-        pts *= 2.0  # corrects coordinates for torch in-network sampling
+        pts=pts*2.0  # corrects coordinates for torch in-network sampling
         x_grid = pts[:, :, 0].view(view_num, point_num, 1, 1, 1)
         y_grid = pts[:, :, 1].view(view_num, point_num, 1, 1, 1)
         z_grid = pts[:, :, 2].view(view_num, point_num, 1, 1, 1)
