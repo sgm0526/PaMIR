@@ -144,6 +144,7 @@ class EvaluatorTex(object):
                     fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
                     sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                     fine_points = sampled_rays_d * fine_z_vals[..., None]
+                    fine_points[:, :, :, 2] += cam_tz
                     fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
                     fine_points = fine_points.reshape(batch_size, num_ray_part * num_steps, 3)
                     fine_points_proj = fine_points_proj.reshape(batch_size, num_ray_part * num_steps, 2)

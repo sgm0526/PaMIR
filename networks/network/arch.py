@@ -13,6 +13,54 @@ import network.ve2 as ve2
 import network.cg2 as cg2
 
 
+import torch.autograd.profiler as profiler
+class PositionalEncoding(torch.nn.Module):
+    """
+    Implement NeRF's positional encoding
+    """
+
+    def __init__(self, num_freqs=6, d_in=3, freq_factor=np.pi, include_input=True):
+        super().__init__()
+        self.num_freqs = num_freqs
+        self.d_in = d_in
+        self.freqs = freq_factor * 2.0 ** torch.arange(0, num_freqs)
+        self.d_out = self.num_freqs * 2 * d_in
+        self.include_input = include_input
+        if include_input:
+            self.d_out += d_in
+        # f1 f1 f2 f2 ... to multiply x by
+        self.register_buffer(
+            "_freqs", torch.repeat_interleave(self.freqs, 2).view(1, -1, 1)
+        )
+        # 0 pi/2 0 pi/2 ... so that
+        # (sin(x + _phases[0]), sin(x + _phases[1]) ...) = (sin(x), cos(x)...)
+        _phases = torch.zeros(2 * self.num_freqs)
+        _phases[1::2] = np.pi * 0.5
+        self.register_buffer("_phases", _phases.view(1, -1, 1))
+
+    def forward(self, x):
+        """
+        Apply positional encoding (new implementation)
+        :param x (batch, self.d_in)
+        :return (batch, self.d_out)
+        """
+        with profiler.record_function("positional_enc"):
+            embed = x.unsqueeze(1).repeat(1, self.num_freqs * 2, 1)
+            embed = torch.sin(torch.addcmul(self._phases, embed, self._freqs))
+            embed = embed.view(x.shape[0], -1)
+            if self.include_input:
+                embed = torch.cat((x, embed), dim=-1)
+            return embed
+
+    @classmethod
+    def from_conf(cls, conf, d_in=3):
+        # PyHocon construction
+        return cls(
+            conf.get_int("num_freqs", 6),
+            d_in,
+            conf.get_float("freq_factor", np.pi),
+            conf.get_bool("include_input", True),
+        )
 class BaseNetwork(nn.Module):
     def __init__(self):
         super(BaseNetwork, self).__init__()
@@ -424,7 +472,9 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_occupancy = 128
         self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
-        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+self.feat_ch_occupancy, self.feat_ch_out, out_sigmoid=False ))
+        num_freq= 10
+        self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
+        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+self.feat_ch_occupancy+ num_freq*2*3+3, self.feat_ch_out, out_sigmoid=False ))
 
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
@@ -432,6 +482,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                      sum(p.numel() for p in self.ve.parameters() if p.requires_grad))
         logging.info('#trainable params of mlp = %d' %
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
+
 
     def forward(self, img, vol, pts, pts_proj, img_feat_geo, feat_occupancy):
         """
@@ -461,8 +512,16 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                                    mode='bilinear', padding_mode='border')
         pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
 
-        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1)
-        pt_out = self.mlp(torch.cat([pt_feat, feat_occupancy], dim=1))
+        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
+
+        ##add coordinate
+        pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
+
+        #import pdb; pdb.set_trace()
+
+
+
+        pt_out = self.mlp(torch.cat([pt_feat, feat_occupancy, pts_pe.permute(0,2,1).unsqueeze(-1)], dim=1))
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()

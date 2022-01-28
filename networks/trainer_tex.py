@@ -145,10 +145,11 @@ class Trainer(BaseTrainer):
         # 1, img_size*img_size, num_steps, 3
         points_cam[:,:,:,2] +=cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
+        rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
         ray_index = np.random.randint(0, img_size * img_size, num_ray)
         sampled_points =points_cam_source[:,ray_index]
         sampled_z_vals = z_vals[:,ray_index]
-        sampled_rays_d = rays_d_cam[:, ray_index]
+        sampled_rays_d = rays_d_cam_source[:, ray_index]
 
         ##
         sampled_points_proj  = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
@@ -167,6 +168,7 @@ class Trainer(BaseTrainer):
             feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts, pts_proj)
             ##for hierarchical sampling
             if hierarchical:
+
                 ray_occupancy = self.pamir_net.forward(img, vol, sampled_points, sampled_points_proj)[-1]
                 # batch_size, num_ray*num_step, 1
                 ray_occupancy = ray_occupancy.reshape(batch_size, num_ray, num_steps, 1)
@@ -179,6 +181,9 @@ class Trainer(BaseTrainer):
                 fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
                 sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                 fine_points = sampled_rays_d * fine_z_vals[..., None]
+                fine_points[:, :, :, 2] += cam_tz
+                import pdb;
+                pdb.set_trace()
                 fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
                 fine_points = fine_points.reshape(batch_size, num_ray * num_steps, 3)
                 fine_points_proj = fine_points_proj.reshape(batch_size, num_ray * num_steps, 2)
