@@ -119,6 +119,42 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                              mesh_fname)
     print('Testing Done. ')
 
+def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex):
+    from evaluator_tex import EvaluatorTex
+    from dataloader.dataloader_testing import TestingImgLoader
+
+    os.makedirs(out_dir, exist_ok=True)
+    os.system('cp -r %s/*.* %s/' % (test_img_dir, out_dir))
+    os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
+
+    device = torch.device("cuda")
+    loader = TestingImgLoader(out_dir, 512, 512, white_bg=True)
+    evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+    for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        if not ('betas' in batch and 'pose' in batch):
+            raise FileNotFoundError('Cannot found SMPL parameters! You need to run PaMIR-geometry first!')
+        if not ('mesh_vert' in batch and 'mesh_face' in batch):
+            raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
+
+        for i in [0]:
+
+
+            nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], batch['betas'],
+                                             batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
+
+        # mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
+        #                                      batch['pose'], batch['scale'], batch['trans'])
+
+        img_dir = batch['img_dir'][0]
+        img_fname = os.path.split(img_dir)[1]
+        mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '_tex.obj')
+        obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
+                              'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
+    print('Testing Done. ')
 
 if __name__ == '__main__':
     iternum=50
@@ -139,10 +175,16 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         main_test_wo_gt_smpl_with_optm(input_image_dir,
                                    output_dir,
-                                   pretrained_checkpoint='./results/pamir_geometry/checkpoints/latest.pt',
-                                   pretrained_gcmr_checkpoint='./results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
+                                   pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
+                                   pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    main_test_texture(output_dir,
+    # main_test_texture(output_dir,
+    #                   output_dir,
+    #                   pretrained_checkpoint_pamir='./results/pamir_geometry/checkpoints/latest.pt',
+    #                   pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_0129_1000_24_fine_coord/checkpoints/latest.pt')
+
+    main_test_sigma(output_dir,
                       output_dir,
-                      pretrained_checkpoint_pamir='./results/pamir_geometry/checkpoints/latest.pt',
-                      pretrained_checkpoint_pamirtex='./results/pamir_texture_nerf_0129_1000_24_fine_coord/checkpoints/latest.pt')
+                      pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
+                      pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0129_1000_24_fine_coord/checkpoints/latest.pt')
+

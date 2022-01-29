@@ -17,6 +17,7 @@ import datetime
 import glob
 import logging
 import math
+import mrcfile
 
 from network.arch import PamirNet, TexPamirNetAttention,TexPamirNetAttention_nerf
 from neural_voxelization_layer.voxelize import Voxelization
@@ -69,6 +70,34 @@ class EvaluatorTex(object):
                 if model in checkpoint:
                     self.models_dict[model].load_state_dict(checkpoint[model])
                     logging.info('Loading pamir_tex_net from ' + checkpoint_file)
+
+    def generate_point_grids(self, vol_res, cam_R, cam_t, cam_f, img_res):
+        x_coords = np.array(range(0, vol_res), dtype=np.float32)
+        y_coords = np.array(range(0, vol_res), dtype=np.float32)
+        z_coords = np.array(range(0, vol_res), dtype=np.float32)
+
+        yv, xv, zv = np.meshgrid(x_coords, y_coords, z_coords)
+        xv = np.reshape(xv, (-1, 1))
+        yv = np.reshape(yv, (-1, 1))
+        zv = np.reshape(zv, (-1, 1))
+        xv = xv / vol_res - 0.5 + 0.5 / vol_res
+        yv = yv / vol_res - 0.5 + 0.5 / vol_res
+        zv = zv / vol_res - 0.5 + 0.5 / vol_res
+        pts = np.concatenate([xv, yv, zv], axis=-1)
+        pts = np.float32(pts)
+        pts_proj = np.dot(pts, cam_R.transpose()) + cam_t
+        pts_proj[:, 0] = pts_proj[:, 0] * cam_f / pts_proj[:, 2] / (img_res / 2)
+        pts_proj[:, 1] = pts_proj[:, 1] * cam_f / pts_proj[:, 2] / (img_res / 2)
+        pts_proj = pts_proj[:, :2]
+        return pts, pts_proj
+
+    def forward_infer_occupancy_feature_grid_naive(self, img, vol, test_res, group_size):
+        pts, pts_proj = self.generate_point_grids(
+            test_res, const.cam_R, const.cam_t, const.cam_f, img.size(2))
+        pts_ov = self.forward_infer_occupancy_value_group(img, vol, pts, pts_proj, group_size)
+        pts_ov = pts_ov.reshape([test_res, test_res, test_res])
+        return pts_ov
+
     def test_nerf_target(self, img, betas, pose, scale, trans, view_diff):
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
@@ -202,11 +231,66 @@ class EvaluatorTex(object):
         pts_clr = pts_clr.reshape(img_size,img_size,3)
         pts_clr = pts_clr.permute(2,0,1)
         save_image(pts_clr, f'./01280906_nerf_source_{view_diff[0]}.png')
-
-
-
-
         return
+
+    def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
+        self.pamir_net.eval()
+        self.pamir_tex_net.eval()
+
+        gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
+        vol = self.voxelization(gt_vert_cam)
+
+        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
+        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
+
+
+        batch_size = img.size(0)
+        num_steps = 24
+        img_size = const.img_res
+        fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
+        fov_degree = fov * 180 / math.pi
+        ray_start = cam_tz - 0.87  # (
+        ray_end = cam_tz + 0.87
+
+        pts, pts_proj = self.generate_point_grids(
+            128, const.cam_R, const.cam_t, const.cam_f, img.size(2))
+
+        pts = torch.from_numpy(pts).unsqueeze(0).to(self.device)
+        pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
+
+        group_size= 10000
+        pts_group_num = (pts.shape[1] + group_size - 1) // group_size
+        pts_clr = []
+        for gi in tqdm(range(pts_group_num), desc='Sigma query'):
+            # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
+            sampled_points = pts[:, (gi * group_size):((gi + 1) * group_size), :] # 1, group_size, num_step, 3
+            sampled_points_proj= pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            # sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
+
+
+            with torch.no_grad():
+                # sampled_points = sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
+                # sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+
+
+                img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+                nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points , sampled_points_proj )
+
+                nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+                    img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
+
+            ##
+
+            pts_clr.append(nerf_output_sigma.detach().cpu())
+        import pdb
+        pdb.set_trace()
+        pts_clr2 = torch.cat(pts_clr, dim=1)[0]
+        pts_clr2 = pts_clr2.reshape(128, 128, 128)
+        with mrcfile.new_mmap(os.path.join('./', f'{1}.mrc'), overwrite=True, shape=pts_clr2.shape, mrc_mode=2) as mrc:
+            mrc.data[:] = pts_clr2
+        return
+
 
     def rotate_points(self, pts, view_id, view_num_per_item=360):
         # rotate points to current view
