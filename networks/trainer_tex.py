@@ -31,6 +31,8 @@ import util.util as util
 import constant as const
 from util.volume_rendering import *
 
+from network.swapAE_networks.patch_discriminator import StyleGAN2PatchDiscriminator, PatchDiscriminator
+
 
 class Trainer(BaseTrainer):
     def __init__(self, options):
@@ -76,12 +78,18 @@ class Trainer(BaseTrainer):
             params=list(self.pamir_tex_net.parameters()), lr=float(self.options.lr)
         )
 
+        ## add for discriminator
+        self.pamir_tex_discriminator = PatchDiscriminator().to(self.device)
+        self.optm_pamir_tex_discriminator = torch.optim.Adam(
+            params=list(self.pamir_tex_discriminator.parameters()), lr=float(self.options.lr)
+        )
+
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
         # Pack models and optimizers in a dict - necessary for checkpointing
-        self.models_dict = {'pamir_tex_net': self.pamir_tex_net}
-        self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net}
+        self.models_dict = {'pamir_tex_net': self.pamir_tex_net, 'pamir_tex_discriminator': self.pamir_tex_discriminator}
+        self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net, 'optimizer_pamir_discriminator': self.optm_pamir_tex_discriminator}
 
         # Optionally start training from a pretrained checkpoint
         # Note that this is different from resuming training
@@ -93,6 +101,7 @@ class Trainer(BaseTrainer):
         self.loss_weights = {
             'tex': 1.0,
             'att': 0.005,
+            'g_loss': 0.01,
         }
 
         logging.info('#trainable_params = %d' %
@@ -157,7 +166,7 @@ class Trainer(BaseTrainer):
         points_cam[:,:,:,2] +=cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
 
-        if False:
+        if True:
             patch_size=32
             num_ray = patch_size*patch_size
             ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
@@ -280,6 +289,15 @@ class Trainer(BaseTrainer):
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] = self.tex_loss(pixels_final, gt_clr_nerf)
 
+        ## GAN loss
+        #pixels_pred : b, patch_size*patch_size, 3
+        patch_img = pixels_final.permute(0,2,1).reshape(batch_size,3, patch_size, patch_size)
+        fake_score = self.pamir_tex_discriminator(patch_img)
+        losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
+
+
+
+
 
         ##
         # points_cam_check = self.rotate_points(points_cam, 180*torch.ones(batch_size).cuda())
@@ -302,6 +320,21 @@ class Trainer(BaseTrainer):
         self.optm_pamir_tex_net.zero_grad()
         total_loss.backward()
         self.optm_pamir_tex_net.step()
+
+
+        ## update discriminator
+
+        gt_patch_img = gt_clr_nerf.permute(0, 2, 1).reshape(batch_size, 3, patch_size, patch_size)
+        fake_score_d = self.pamir_tex_discriminator(patch_img.detach())
+        real_score_d = self.pamir_tex_discriminator(gt_patch_img)
+        total_loss_d = 0.
+        losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
+        total_loss_d+= losses['d_loss']
+
+        self.optm_pamir_tex_discriminator.zero_grad()
+        total_loss_d.backward()
+        self.optm_pamir_tex_discriminator.step()
+
 
         # save
         self.write_logs(losses)
@@ -336,7 +369,12 @@ class Trainer(BaseTrainer):
 
         return ray_index.reshape(batch_size, -1).type(torch.int64).cuda()
 
-
+    def gan_loss(self, pred, should_be_classified_as_real):
+        bs = pred.size(0)
+        if should_be_classified_as_real:
+            return F.softplus(-pred).view(bs, -1).mean(dim=1)
+        else:
+            return F.softplus(pred).view(bs, -1).mean(dim=1)
 
     def tex_loss(self, pred_clr, gt_clr, att=None):
         """Computes per-sample loss of the occupancy value"""

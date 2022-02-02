@@ -232,7 +232,7 @@ class EvaluatorTex(object):
         pts_clr = torch.cat(pts_clr, dim=1)
         pts_clr = pts_clr.reshape(-1, img_size,img_size,3)
         pts_clr = pts_clr.permute(0,3,1,2)
-        # save_image(pts_clr, f'./01292247_nerf_source_{view_diff[0]}.png')
+
         return pts_clr
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
