@@ -32,7 +32,7 @@ from util.volume_rendering import *
 from torchvision.utils import save_image
 
 class EvaluatorTex(object):
-    def __init__(self, device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamir_tex):
+    def __init__(self, device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamir_tex, no_weight=False):
         super(EvaluatorTex, self).__init__()
         util.configure_logging(True, False, None)
 
@@ -55,8 +55,9 @@ class EvaluatorTex(object):
         self.pamir_tex_net = TexPamirNetAttention_nerf().to(self.device)
 
         self.models_dict = {'pamir_tex_net': self.pamir_tex_net}
-        self.load_pretrained_pamir_net(pretrained_checkpoint_pamir)
-        self.load_pretrained(checkpoint_file=pretrained_checkpoint_pamir_tex)
+        if not no_weight:
+            self.load_pretrained_pamir_net(pretrained_checkpoint_pamir)
+            self.load_pretrained(checkpoint_file=pretrained_checkpoint_pamir_tex)
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
@@ -111,12 +112,12 @@ class EvaluatorTex(object):
 
 
         batch_size = img.size(0)
-        num_steps = 24
         img_size = const.img_res
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov * 180 / math.pi
         ray_start = cam_tz - 0.87  # (
         ray_end = cam_tz + 0.87
+        num_steps = const.num_steps
 
 
         ## todo hierarchical sampling
@@ -135,9 +136,10 @@ class EvaluatorTex(object):
         #batch_size, 512*512, num_step, 3
 
 
-
         num_ray= 5000
-        hierarchical = True
+        num_steps = const.num_steps
+        hierarchical = const.hierarchical
+
         pts_group_num = (img_size *img_size + num_ray - 1) //num_ray
         pts_clr = []
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
@@ -227,11 +229,11 @@ class EvaluatorTex(object):
 
             pts_clr.append(pixels_final.detach().cpu())
 
-        pts_clr = torch.cat(pts_clr, dim=1)[0]
-        pts_clr = pts_clr.reshape(img_size,img_size,3)
-        pts_clr = pts_clr.permute(2,0,1)
-        save_image(pts_clr, f'./01280906_nerf_source_{view_diff[0]}.png')
-        return
+        pts_clr = torch.cat(pts_clr, dim=1)
+        pts_clr = pts_clr.reshape(-1, img_size,img_size,3)
+        pts_clr = pts_clr.permute(0,3,1,2)
+        # save_image(pts_clr, f'./01292247_nerf_source_{view_diff[0]}.png')
+        return pts_clr
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
         self.pamir_net.eval()
@@ -244,14 +246,6 @@ class EvaluatorTex(object):
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
         cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
 
-
-        batch_size = img.size(0)
-        num_steps = 24
-        img_size = const.img_res
-        fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
-        fov_degree = fov * 180 / math.pi
-        ray_start = cam_tz - 0.87  # (
-        ray_end = cam_tz + 0.87
 
         pts, pts_proj = self.generate_point_grids(
             128, const.cam_R, const.cam_t, const.cam_f, img.size(2))
@@ -283,8 +277,8 @@ class EvaluatorTex(object):
             ##
 
             pts_clr.append(nerf_output_sigma.detach().cpu())
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
         pts_clr2 = torch.cat(pts_clr, dim=1)[0]
         pts_clr2 = pts_clr2.reshape(128, 128, 128)
         with mrcfile.new_mmap(os.path.join('./', f'{1}.mrc'), overwrite=True, shape=pts_clr2.shape, mrc_mode=2) as mrc:
@@ -377,7 +371,7 @@ class EvaluatorTex(object):
 
     def forward_infer_color_value(self, img, vol, pts, pts_proj):
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        _, clr, _, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo)
+        _, clr, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo, feat_occupancy=None) ##
         return clr
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):

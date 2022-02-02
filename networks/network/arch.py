@@ -161,6 +161,79 @@ class MLP(BaseNetwork):
         return out
 
 
+class MLP_NeRF(BaseNetwork):
+    """
+    MLP implemented using 2D convolution
+    Neuron number: (257, 1024, 512, 256, 128, 1)
+    """
+    def __init__(self, in_channels=257, occ_channels=128, out_channels=5, bias=True, weight_norm=False):
+        super(MLP_NeRF, self).__init__()
+        inter_channels = (1024, 512, 256, 128)
+        norm_fn = lambda x: x
+        if weight_norm:
+            norm_fn = lambda x: nn.utils.weight_norm(x)
+
+        self.conv0 = nn.Sequential(
+            norm_fn(nn.Conv2d(in_channels=in_channels, out_channels=inter_channels[0],
+                              kernel_size=1, stride=1, padding=0, bias=bias)),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+        self.conv1 = nn.Sequential(
+            norm_fn(nn.Conv2d(in_channels=inter_channels[0] + in_channels,
+                              out_channels=inter_channels[1],
+                              kernel_size=1, stride=1, padding=0, bias=bias)),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+        self.conv2 = nn.Sequential(
+            norm_fn(nn.Conv2d(in_channels=inter_channels[1] + in_channels,
+                              out_channels=inter_channels[2],
+                              kernel_size=1, stride=1, padding=0, bias=bias)),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+        self.conv3 = nn.Sequential(
+            norm_fn(nn.Conv2d(in_channels=inter_channels[2] + in_channels,
+                              out_channels=inter_channels[3],
+                              kernel_size=1, stride=1, padding=0, bias=bias)),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+
+        self.conv_color = nn.Conv2d(in_channels=inter_channels[3], out_channels=out_channels-1,
+                               kernel_size=1, stride=1, padding=0, bias=bias)
+        self.conv_sigma = nn.Sequential(
+            norm_fn(nn.Conv2d(in_channels=inter_channels[3] + occ_channels,
+                              out_channels=inter_channels[3],
+                              kernel_size=1, stride=1, padding=0, bias=bias)),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=inter_channels[3], out_channels=1,
+                      kernel_size=1, stride=1, padding=0, bias=bias)
+        )
+        self.init_weights()
+
+    def forward(self, x, feat_occupancy):
+        out = self.conv0(x)
+        out = self.conv1(torch.cat([x, out], dim=1))
+        out = self.conv2(torch.cat([x, out], dim=1))
+        out = self.conv3(torch.cat([x, out], dim=1))
+        color = self.conv_color(out)
+        sigma = self.conv_sigma(torch.cat([out, feat_occupancy], dim=1))
+        return torch.cat([color, sigma], dim=1)
+
+    def forward_sigma(self, x, feat_occupancy):
+        out = self.conv0(x)
+        out = self.conv1(torch.cat([x, out], dim=1))
+        out = self.conv2(torch.cat([x, out], dim=1))
+        out = self.conv3(torch.cat([x, out], dim=1))
+        sigma = self.conv_sigma(torch.cat([out, feat_occupancy], dim=1))
+        return sigma
+
+    def forward_color(self, x):
+        out = self.conv0(x)
+        out = self.conv1(torch.cat([x, out], dim=1))
+        out = self.conv2(torch.cat([x, out], dim=1))
+        out = self.conv3(torch.cat([x, out], dim=1))
+        color = self.conv_color(out)
+        return color
+
 class MLPShallow(BaseNetwork):
     def __init__(self, in_channels, median_channels, out_channels, bias=True):
         super(MLPShallow, self).__init__()
@@ -474,7 +547,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP(256 + self.feat_ch_2D + self.feat_ch_3D+self.feat_ch_occupancy+ num_freq*2*3+3, self.feat_ch_out, out_sigmoid=False ))
+        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
 
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
@@ -518,15 +591,21 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
 
         #import pdb; pdb.set_trace()
+        if feat_occupancy is None:
+            pt_out = self.mlp.forward_color(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+            pt_out = pt_out.permute([0, 2, 3, 1])
+            pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
+            pt_tex_pred = pt_out[:, :, :3].sigmoid()
+            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_tex_sigma = None
+        else:
+            pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
+            pt_out = pt_out.permute([0, 2, 3, 1])
+            pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
+            pt_tex_pred = pt_out[:, :, :3].sigmoid()
+            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_tex_sigma = pt_out[:, :, 4:5]
 
-
-
-        pt_out = self.mlp(torch.cat([pt_feat, feat_occupancy, pts_pe.permute(0,2,1).unsqueeze(-1)], dim=1))
-        pt_out = pt_out.permute([0, 2, 3, 1])
-        pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
-        pt_tex_pred = pt_out[:, :, :3].sigmoid()
-        pt_tex_att = pt_out[:, :, 3:4].sigmoid()
-        pt_tex_sigma = pt_out[:,:, 4:5]
         ##
 
         pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,

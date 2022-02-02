@@ -39,6 +39,9 @@ class TrainOptions(object):
         dataloading.add_argument('--view_num_per_item', type=int, default=60, help='view_num_per_item')
         dataloading.add_argument('--point_num', type=int, default=5000, help='number of point samples')
 
+        dataloading.add_argument('--num_steps', type=int, default=24, help='view_num_per_item')
+        dataloading.add_argument('--hierarchical',type=str2bool, default=True, help='number of point samples')
+
         train = self.parser.add_argument_group('Training Options')
         train.add_argument('--num_epochs', type=int, default=50, help='Total number of training epochs')
         train.add_argument('--batch_size', type=int, default=16, help='Batch size')
@@ -99,3 +102,13 @@ class TrainOptions(object):
             json.dump(vars(self.args), f, indent=4)
         create_code_snapshot('./', os.path.join(self.args.log_dir, 'code_bk_%s.tar.gz' % self.start_time_str))
         return
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')

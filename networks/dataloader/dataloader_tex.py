@@ -60,10 +60,16 @@ class TrainingImgDataset(Dataset):
         self.view_num_per_item = view_num_per_item
         self.point_num = point_num
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
-        self.data_aug = self.training
 
-        self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
-        self.len = len(self.data_list) * self.view_num_per_item
+        if self.training:
+            self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
+            self.len = len(self.data_list) * self.view_num_per_item
+        else:
+            self.data_list = load_data_list(dataset_dir, 'data_list_test.txt')
+            self.model_2_viewindex = [138,155,195,73,303,225,240,333,136,197,222,272,291,298,147,38,194,275,348,40,1,13,325,273,186]
+            self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
+            self.len = len(self.data_list) #* self.view_num_per_item
+
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
@@ -81,16 +87,28 @@ class TrainingImgDataset(Dataset):
     def __getitem__(self, item):
         data_list = self.data_list
 
-        model_id = item // self.view_num_per_item
-        view_id = item % self.view_num_per_item
+
+        if self.training:
+            model_id = item // self.view_num_per_item
+            view_id = item % self.view_num_per_item
+        else:
+            model_id = item
+            view_id = self.model_2_viewindex[model_id]
+
+
         data_item = data_list[model_id]
 
         cam_f = self.default_testing_cam_f
         point_num = self.point_num
 
-        img = self.load_image(data_item, view_id)
+        img, mask = self.load_image(data_item, view_id)
         cam_R, cam_t = self.load_cams(data_item, view_id)
-        pts, pts_clr = self.load_points(data_item, view_id, point_num)
+        pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, view_id, point_num)
+
+        if not self.training:
+            pts = all_pts
+            pts_clr = all_pts_clr
+
 
 
         ###
@@ -98,10 +116,14 @@ class TrainingImgDataset(Dataset):
         if target_view_id>=view_id:
             target_view_id+=1
 
+        if not self.training:
+            target_view_id  = self.model_2_targetviewindex[model_id]
+
         if target_view_id == view_id:
             raise NotImplementedError()
-        #target_view_id=view_id
-        target_img = self.load_image(data_item, target_view_id)
+
+        target_img , target_mask = self.load_image(data_item, target_view_id)
+
 
         ###
 
@@ -133,6 +155,8 @@ class TrainingImgDataset(Dataset):
             'cam_r': torch.from_numpy(cam_R),
             'cam_t': torch.from_numpy(cam_t),
             'pts_world': torch.from_numpy(pts),
+            'mask': torch.from_numpy(mask),
+            'target_mask': torch.from_numpy(target_mask),
 
 
         }
@@ -160,7 +184,7 @@ class TrainingImgDataset(Dataset):
         img = img * msk + (1 - msk)  # white background
         img_black = img * msk
         # img = cv.resize(img, (self.img_w, self.img_h))
-        return img
+        return img, msk
 
     def load_cams(self, data_item, view_id):
         dat_fpath = os.path.join(
@@ -218,6 +242,9 @@ class TrainingImgDataset(Dataset):
         surface_colors = uv_render[uv_mask]
         surface_normal = uv_normal[uv_mask]
 
+        all_points = surface_points
+        all_points_clr = surface_colors
+
         sample_id = np.int32(np.random.rand(point_num) * len(surface_points))
         surface_points = surface_points[sample_id]
         surface_colors = surface_colors[sample_id]
@@ -225,7 +252,7 @@ class TrainingImgDataset(Dataset):
 
         surface_points += surface_normal * np.random.randn(point_num, 1) * 0.01
 
-        return surface_points, surface_colors
+        return surface_points, surface_colors, all_points, all_points_clr
 
     def load_smpl_parameters(self, data_item):
         dat_fpath = os.path.join(
@@ -307,3 +334,5 @@ class TrainingImgLoader(DataLoader):
         super(TrainingImgLoader, self).__init__(
             self.dataset, batch_size=batch_size, shuffle=training, num_workers=num_workers,
             worker_init_fn=worker_init_fn, drop_last=True)
+
+

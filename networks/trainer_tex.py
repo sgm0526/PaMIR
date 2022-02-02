@@ -46,6 +46,13 @@ class Trainer(BaseTrainer):
             point_num=self.options.point_num,
             load_pts2smpl_idx_wgt=True,
             smpl_data_folder='./data')
+        self.val_ds = TrainingImgDataset(
+            self.options.dataset_dir, img_h=const.img_res, img_w=const.img_res,
+            training=False, testing_res=256,
+            view_num_per_item=self.options.view_num_per_item,
+            point_num=self.options.point_num,
+            load_pts2smpl_idx_wgt=True,
+            smpl_data_folder='./data')
 
         # neural voxelization components
         self.smpl = SMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl').to(self.device)
@@ -115,23 +122,25 @@ class Trainer(BaseTrainer):
         gt_scale = input_batch['scale']
         gt_trans = input_batch['trans']
 
-
-
-
         target_img = input_batch['target_img']
+
+        mask = input_batch['mask']
+        target_mask = input_batch['target_mask']
 
         ###
         batch_size = pts.size(0)
-        num_steps = 24
         img_size = const.img_res
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
-        fov_degree = fov*180/math.pi
+        fov_degree = fov * 180 / math.pi
         ray_start = cam_tz - 0.87
         ray_end = cam_tz + 0.87
 
-        num_ray = 1000
-        hierarchical= True
+
+        num_steps = self.options.num_steps
+        hierarchical= self.options.hierarchical
+
         ## todo hierarchical sampling
+        gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
 
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
                                                                resolution=(img_size, img_size),
@@ -147,12 +156,38 @@ class Trainer(BaseTrainer):
         # 1, img_size*img_size, num_steps, 3
         points_cam[:,:,:,2] +=cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
-        ray_index = np.random.randint(0, img_size * img_size, num_ray)
-        sampled_points =points_cam_source[:,ray_index]
-        sampled_z_vals = z_vals[:,ray_index]
-        # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
-        #sampled_rays_d = rays_d_cam_source[:, ray_index]
-        sampled_rays_d_world = rays_d_cam[:, ray_index]
+
+        if False:
+            patch_size=32
+            num_ray = patch_size*patch_size
+            ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
+
+            sampled_points =torch.gather(points_cam_source, 1,
+                         ray_index[:,:,None, None].repeat(1, 1, num_steps, 3))
+            sampled_z_vals = torch.gather(z_vals, 1,
+                                          ray_index[:, :, None, None].repeat(1, 1, num_steps, 1))
+            sampled_rays_d_world = torch.gather(rays_d_cam, 1,
+                                          ray_index[:, :, None].repeat(1, 1, 3))
+            gt_clr_nerf = torch.gather(gt_clr_nerf, 1,
+                                                ray_index[:, :, None].repeat(1, 1, 3))
+
+            # gt_clr_nerf2 = gt_clr_nerf.reshape(3, patch_size, patch_size, 3)
+            # gt_clr_nerf2 = gt_clr_nerf2.permute(0, 3, 1, 2)
+            # from torchvision.utils import save_image
+            # save_image(gt_clr_nerf2, './patch_300.png')
+
+
+        else:
+            num_ray = 1000
+            ray_index = np.random.randint(0, img_size * img_size, num_ray)
+            sampled_points =points_cam_source[:,ray_index]
+            sampled_z_vals = z_vals[:,ray_index]
+            sampled_rays_d_world = rays_d_cam[:, ray_index]
+
+            gt_clr_nerf = gt_clr_nerf[:, ray_index]
+
+            # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
+            # sampled_rays_d = rays_d_cam_source[:, ray_index]
 
         sampled_points_proj  = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
 
@@ -178,6 +213,7 @@ class Trainer(BaseTrainer):
                 max_index = ray_occupancy_diff.argmax(dim=2) + 1
 
                 max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+
                 std = 0.1
                 std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
                 fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
@@ -241,11 +277,6 @@ class Trainer(BaseTrainer):
             pixels_final = pixels[..., 3:6]
 
 
-
-        gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
-        gt_clr_nerf = gt_clr_nerf[:,ray_index]
-
-
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] = self.tex_loss(pixels_final, gt_clr_nerf)
 
@@ -257,8 +288,6 @@ class Trainer(BaseTrainer):
         # check_img = F.grid_sample(input=img, grid=points_cam_check_proj, align_corners=False,mode='bilinear', padding_mode='border')
         # import torchvision
         # torchvision.utils.save_image(check_img, './check_img_0.1_180.png')
-
-        #import pdb; pdb.set_trace()
 
 
 
@@ -284,6 +313,28 @@ class Trainer(BaseTrainer):
             for param_group in self.optm_pamir_tex_net.param_groups:
                 param_group['lr'] = learning_rate
         return losses
+
+    def sample_ray_index(self, img_size, mask, patch_size=32):
+        """Computes per-sample loss of the occupancy value"""
+        batch_size = mask.shape[0]
+        x, y = torch.meshgrid(torch.linspace(0,img_size-1, img_size), torch.linspace(0,img_size-1, img_size))
+        grid = torch.cat([x.unsqueeze(-1), y.unsqueeze(-1)], dim=-1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()
+        grid_for_max = grid * mask[...,:1]
+        x_max = grid_for_max[...,0].max(1)[0].max(1)[0]
+        y_max = grid_for_max[...,1].max(1)[0].max(1)[0]
+        grid_for_min = grid * mask[...,:1] + img_size * (~mask[...,:1].bool()).float()
+        x_min = grid_for_min[...,0].min(1)[0].min(1)[0]
+        y_min = grid_for_min[...,1].min(1)[0].min(1)[0]
+        ray_grid = torch.range(0, img_size * img_size - 1)
+        ray_grid = ray_grid.reshape(img_size, img_size)
+        ray_index_list = []
+        for i in range(batch_size):
+            tl_x = torch.randint(int(x_min[i].item()), int((x_max[i]-patch_size).item()), [1])
+            tl_y = torch.randint(int(y_min[i].item()), int((y_max[i]-patch_size).item()), [1])
+            ray_index_list.append(ray_grid[tl_x:tl_x + patch_size, tl_y:tl_y + patch_size].unsqueeze(0))
+        ray_index = torch.cat(ray_index_list,dim=0)
+
+        return ray_index.reshape(batch_size, -1).type(torch.int64).cuda()
 
 
 

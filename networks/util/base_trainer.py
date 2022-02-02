@@ -11,6 +11,11 @@ from .data_loader import CheckpointDataLoader
 from .saver import CheckpointSaver
 from .util import configure_logging
 
+from torch.utils.data import DataLoader
+from evaluator_tex import EvaluatorTex
+
+from torchvision.utils import save_image
+
 tqdm.monitor_interval = 0
 
 
@@ -73,6 +78,11 @@ class BaseTrainer(object):
                                                      shuffle=self.options.shuffle_train,
                                                      worker_init_fn=worker_init_fn)
 
+            val_data_loader = DataLoader(self.val_ds,batch_size=1, shuffle=False, num_workers=self.options.num_workers,
+                worker_init_fn=worker_init_fn, drop_last=False)
+
+
+
             # Iterate over all batches in an epoch
             for step, batch in enumerate(tqdm(train_data_loader, desc='Epoch '+str(epoch),
                                               total=len(self.train_ds) // self.options.batch_size,
@@ -85,6 +95,36 @@ class BaseTrainer(object):
                     # Tensorboard logging every summary_steps steps
                     if self.step_count % self.options.summary_steps == 0:
                         self.train_summaries(batch, out)
+
+                    if self.step_count % (100*self.options.summary_steps) == 0:
+                        #self.val_summaries(batch, out)
+                        evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
+                        evaluater.pamir_net = self.pamir_net
+                        evaluater.pamir_tex_net = self.pamir_tex_net
+
+                        val_mesh_loss = 0
+                        val_nerf_loss = 0
+                        for step_val , batch_val in enumerate(tqdm(val_data_loader, desc='Epoch ' + str(epoch),
+                                                          total=len(self.val_ds),
+                                                          initial=0)):
+
+                            batch_val = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k,v in batch_val.items()}
+
+                            mesh_color = evaluater.test_tex_pifu(batch_val['img'], batch_val['pts'], batch_val['betas'],
+                                                    batch_val['pose'], batch_val['scale'], batch_val['trans'])
+
+                            nerf_color = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
+                                                                    batch_val['pose'], batch_val['scale'], batch_val['trans'],
+                                                                    batch_val['view_id'] - batch_val['target_view_id'])
+
+                            val_mesh_loss +=self.tex_loss(batch_val['pts_clr'], torch.Tensor(mesh_color).unsqueeze(0).cuda())
+                            val_nerf_loss += self.tex_loss(batch_val['target_img'],
+                                                           nerf_color.cuda())
+                            #save_image(batch_val['target_img'],f'./debug/{step_val}_1.png')
+                        val_mesh_loss /= len(self.val_ds)
+                        val_nerf_loss /= len(self.val_ds)
+                        self.summary_writer.add_scalar('val_tex', val_mesh_loss.item(), self.step_count)
+                        self.summary_writer.add_scalar('val_nerf_tex', val_nerf_loss.item(), self.step_count)
 
                     # Backup the current training stage
                     if self.step_count % (self.options.summary_steps*10) == 0:

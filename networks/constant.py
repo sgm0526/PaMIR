@@ -23,3 +23,6 @@ training_list_hard_fname = 'training_models_hard.txt'
 dataset_image_subfolder = 'image_data'
 dataset_mesh_subfolder = 'mesh_data'
 
+num_steps=24
+hierarchical=True
+
