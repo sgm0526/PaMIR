@@ -31,6 +31,8 @@ import constant as const
 from util.volume_rendering import *
 from torchvision.utils import save_image
 
+
+
 class EvaluatorTex(object):
     def __init__(self, device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamir_tex, no_weight=False):
         super(EvaluatorTex, self).__init__()
@@ -158,69 +160,12 @@ class EvaluatorTex(object):
                 sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
                 sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-
                 img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-                nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points , sampled_points_proj )
 
-                if hierarchical:
-                    ray_occupancy = self.pamir_net.forward(img, vol, sampled_points, sampled_points_proj)[-1]
-                    # batch_size, num_ray*num_step, 1
-                    ray_occupancy = ray_occupancy.reshape(batch_size, num_ray_part, num_steps, 1)
-                    ray_occupancy_diff = ray_occupancy[:, :, 1:] - ray_occupancy[:, :, :-1]
-                    max_index = ray_occupancy_diff.argmax(dim=2) + 1
-
-                    max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
-                    std = 0.1
-                    std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1)
-                    fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
-
-                    sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-                    fine_points = sampled_rays_d_world * fine_z_vals[..., None]
-                    fine_points[:, :, :, 2] += cam_tz
-                    fine_points = self.rotate_points(fine_points, view_diff)
-
-                    fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
-                    fine_points = fine_points.reshape(batch_size, num_ray_part * num_steps, 3)
-                    fine_points_proj = fine_points_proj.reshape(batch_size, num_ray_part * num_steps, 2)
-                    fine_nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, fine_points, fine_points_proj)
-                    sampled_points = sampled_points.reshape(batch_size, num_ray_part, num_steps, 3)
-                    fine_points = fine_points.reshape(batch_size, num_ray_part, num_steps, 3)
-
-                    ch_mlp_feat = nerf_feat_occupancy.size(1)
-                    all_nerf_feat_occupancy = torch.cat(
-                        [nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray_part, num_steps, 1),
-                         fine_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray_part, num_steps, 1)], dim=3)
-                    all_points = torch.cat([sampled_points, fine_points], dim=2)
-                    all_points_proj = torch.cat([sampled_points_proj.reshape(batch_size, num_ray_part, num_steps, 2),
-                                                 fine_points_proj.reshape(batch_size, num_ray_part, num_steps, 2)], dim=2)
-                    all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
-                    _, indices = torch.sort(all_z_vals, dim=2)
-                    all_z_vals = torch.gather(all_z_vals, 2, indices)
-                    all_points = torch.gather(all_points, 2, indices.expand(-1, -1, -1, 3))
-                    all_points_proj = torch.gather(all_points_proj, 2, indices.expand(-1, -1, -1, 2))
-                    all_nerf_feat_occupancy = torch.gather(all_nerf_feat_occupancy, 3,
-                                                           indices.unsqueeze(1).expand(-1, ch_mlp_feat, -1, -1, -1))
-
-                if hierarchical:
-                    nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
-                        img, vol, all_points.reshape(batch_size, num_ray_part * num_steps * 2, 3),
-                        all_points_proj.reshape(batch_size, num_ray_part * num_steps * 2, 2), img_feat_geo,
-                        all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray_part * num_steps * 2, 1))
-                    all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
-                    pixels, depth, weights = fancy_integration(
-                        all_outputs.reshape(batch_size, num_ray_part, num_steps * 2, -1),
-                        all_z_vals, device=self.device, white_back=True)
-                    pixels_pred = pixels[..., :3]
-                    pixels_final = pixels[..., 3:6]
-                else:
-                    nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
-                        img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
-
-                    all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
-                    pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray_part, num_steps, -1),
-                                                               sampled_z_vals, device=self.device, white_back=True)
-                    pixels_pred = pixels[..., :3]
-                    pixels_final = pixels[..., 3:6]
+                pixels_pred, pixels_final =self.get_nerf(img, vol, img_feat_geo, sampled_points,
+                                                             sampled_points_proj, sampled_z_vals, sampled_rays_d_world,
+                                                             hierarchical, batch_size, num_ray_part, num_steps, cam_f,
+                                                             cam_c, cam_tz, view_diff)
 
                 #pixels 1, group_size, 3
 
@@ -286,31 +231,7 @@ class EvaluatorTex(object):
         return
 
 
-    def rotate_points(self, pts, view_id, view_num_per_item=360):
-        # rotate points to current view
-        angle = 2 * np.pi * view_id / view_num_per_item
-        pts_rot = torch.zeros_like(pts)
-        if len(pts.size()) == 4:
-            angle = angle[:, None, None]
-        else:
-            angle = angle[:, None]
 
-        pts_rot[..., 0] = pts[..., 0] * angle.cos() - pts[..., 2] * angle.sin()
-        pts_rot[..., 1] = pts[..., 1]
-        pts_rot[..., 2] = pts[..., 0] * angle.sin() + pts[..., 2] * angle.cos()
-        return pts_rot
-
-    def project_points(self, sampled_points, cam_f, cam_c, cam_tz):
-
-        sampled_points_proj = sampled_points.clone()
-        sampled_points_proj[..., 1] *= -1
-        sampled_points_proj[..., 2] *= -1
-
-        sampled_points_proj[..., 2] += cam_tz  # add cam_t
-        sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
-        sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
-        sampled_points_proj = sampled_points_proj[..., :2]
-        return sampled_points_proj
 
     def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
         self.pamir_net.eval()
@@ -406,3 +327,101 @@ class EvaluatorTex(object):
             self.pamir_net.load_state_dict(data['pamir_net'])
         else:
             raise IOError('Failed to load pamir_net model from the specified checkpoint!!')
+
+    def rotate_points(self, pts, view_id, view_num_per_item=360):
+        # rotate points to current view
+        angle = 2 * np.pi * view_id / view_num_per_item
+        pts_rot = torch.zeros_like(pts)
+        if len(pts.size()) == 4:
+            angle = angle[:, None, None]
+        else:
+            angle = angle[:, None]
+
+        pts_rot[..., 0] = pts[..., 0] * angle.cos() - pts[..., 2] * angle.sin()
+        pts_rot[..., 1] = pts[..., 1]
+        pts_rot[..., 2] = pts[..., 0] * angle.sin() + pts[..., 2] * angle.cos()
+        return pts_rot
+
+    def project_points(self, sampled_points, cam_f, cam_c, cam_tz):
+
+        sampled_points_proj = sampled_points.clone()
+        sampled_points_proj[..., 1] *= -1
+        sampled_points_proj[..., 2] *= -1
+
+        sampled_points_proj[..., 2] += cam_tz  # add cam_t
+        sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
+        sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
+        sampled_points_proj = sampled_points_proj[..., :2]
+        return sampled_points_proj
+
+
+    def get_nerf(self, img, vol,img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
+
+        with torch.no_grad():
+            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
+
+            ##for hierarchical sampling
+            if hierarchical:
+                ray_occupancy = self.pamir_net.forward(img, vol, sampled_points, sampled_points_proj)[-1]
+                # batch_size, num_ray*num_step, 1
+                ray_occupancy = ray_occupancy.reshape(batch_size, num_ray, num_steps, 1)
+                ray_occupancy_diff = ray_occupancy[:, :, 1:] - ray_occupancy[:, :, :-1]
+                max_index = ray_occupancy_diff.argmax(dim=2) + 1
+
+                max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+
+                std = 0.1
+                std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
+                fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+
+                sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                fine_points = sampled_rays_d_world * fine_z_vals[..., None]
+                fine_points[:, :, :, 2] += cam_tz
+                fine_points = self.rotate_points(fine_points, view_diff)
+                # sampled_rays_d = sampled_rays_d.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                # fine_points = sampled_rays_d * fine_z_vals[..., None]
+                # fine_points[:, :, :, 2] += cam_tz
+
+                fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
+                fine_points = fine_points.reshape(batch_size, num_ray * num_steps, 3)
+                fine_points_proj = fine_points_proj.reshape(batch_size, num_ray * num_steps, 2)
+                fine_nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, fine_points, fine_points_proj)
+                sampled_points = sampled_points.reshape(batch_size, num_ray, num_steps, 3)
+                fine_points = fine_points.reshape(batch_size, num_ray, num_steps, 3)
+
+                ch_mlp_feat = nerf_feat_occupancy.size(1)
+                all_nerf_feat_occupancy = torch.cat(
+                    [nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray, num_steps, 1),
+                     fine_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray, num_steps, 1)], dim=3)
+                all_points = torch.cat([sampled_points, fine_points], dim=2)
+                all_points_proj = torch.cat([sampled_points_proj.reshape(batch_size, num_ray, num_steps, 2),
+                                             fine_points_proj.reshape(batch_size, num_ray, num_steps, 2)], dim=2)
+                all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
+                _, indices = torch.sort(all_z_vals, dim=2)
+                all_z_vals = torch.gather(all_z_vals, 2, indices)
+                all_points = torch.gather(all_points, 2, indices.expand(-1, -1, -1, 3))
+                all_points_proj = torch.gather(all_points_proj, 2, indices.expand(-1, -1, -1, 2))
+                all_nerf_feat_occupancy = torch.gather(all_nerf_feat_occupancy, 3,
+                                                       indices.unsqueeze(1).expand(-1, ch_mlp_feat, -1, -1, -1))
+
+        if hierarchical:
+            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+                img, vol, all_points.reshape(batch_size, num_ray * num_steps * 2, 3),
+                all_points_proj.reshape(batch_size, num_ray * num_steps * 2, 2), img_feat_geo,
+                all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray * num_steps * 2, 1))
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
+            pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
+                                                       all_z_vals, device=self.device, white_back=True)
+            pixels_pred = pixels[..., :3]
+            pixels_final = pixels[..., 3:6]
+        else:
+            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
+
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
+            pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                       sampled_z_vals, device=self.device, white_back=True)
+            pixels_pred = pixels[..., :3]
+            pixels_final = pixels[..., 3:6]
+
+        return pixels_pred, pixels_final

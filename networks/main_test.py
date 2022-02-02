@@ -108,7 +108,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
             nerf_color = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
 
-            save_image(nerf_color, f'./02020744_nerf_source_{str(i).zfill(3)}.png')
+            save_image(nerf_color, f'./02020855_nerf_source_{str(i).zfill(3)}.png')
 
         import pdb; pdb.set_trace()
 
