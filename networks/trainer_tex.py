@@ -81,7 +81,7 @@ class Trainer(BaseTrainer):
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = False
+        self.TrainGAN = True
 
         if self.TrainGAN:
             ## add for discriminator
@@ -254,6 +254,7 @@ class Trainer(BaseTrainer):
         # Do backprop
         self.optm_pamir_tex_net.zero_grad()
         total_loss.backward()
+
         self.optm_pamir_tex_net.step()
 
 

@@ -96,12 +96,9 @@ class BaseTrainer(object):
                     if self.step_count % self.options.summary_steps == 0:
                         self.train_summaries(batch, out)
 
-
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net
                         evaluater.pamir_tex_net = self.pamir_tex_net
-
-
                         for step_val, batch_val in enumerate(tqdm(val_data_loader, desc='Epoch ' + str(epoch),
                                                                   total=len(self.val_ds),
                                                                   initial=0)):
@@ -115,6 +112,7 @@ class BaseTrainer(object):
                                                                     batch_val['trans'],
                                                                     batch_val['view_id'] - batch_val['target_view_id'])
                             self.summary_writer.add_images('nerf_img', nerf_color , self.step_count)
+                            self.summary_writer.add_images('target_img', batch_val['target_img'], self.step_count)
 
 
                     if self.step_count % (100*self.options.summary_steps) == 0:
