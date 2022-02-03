@@ -172,7 +172,7 @@ class EvaluatorTex(object):
 
             ##
 
-            pts_clr.append(pixels_final.detach().cpu())
+            pts_clr.append(pixels_pred.detach().cpu())
 
         pts_clr = torch.cat(pts_clr, dim=1)
         pts_clr = pts_clr.reshape(-1, img_size,img_size,3)

@@ -96,6 +96,7 @@ class BaseTrainer(object):
                     if self.step_count % self.options.summary_steps == 0:
                         self.train_summaries(batch, out)
 
+                    if self.step_count % (5*self.options.summary_steps) == 0:
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net
                         evaluater.pamir_tex_net = self.pamir_tex_net
