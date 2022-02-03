@@ -108,7 +108,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
             nerf_color = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
 
-            save_image(nerf_color, f'./02020855_nerf_source_{str(i).zfill(3)}.png')
+            save_image(nerf_color, f'./02020828_nerf_source_{str(i).zfill(3)}.png')
 
         import pdb; pdb.set_trace()
 
@@ -183,7 +183,7 @@ if __name__ == '__main__':
                                    pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                                    pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0202_1000_48_coord_alpha_patch_gan/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0202_1000_48_coord_alpha_patch_ganpred/checkpoints/latest.pt'
 
     main_test_texture(output_dir,
                       output_dir,

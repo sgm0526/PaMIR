@@ -81,7 +81,7 @@ class Trainer(BaseTrainer):
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = True
+        self.TrainGAN = False
 
         if self.TrainGAN:
             ## add for discriminator
@@ -159,7 +159,7 @@ class Trainer(BaseTrainer):
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
 
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
-                                                               resolution=(img_size, img_size),
+                                                               resolution=(const.feature_res, const.feature_res),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
@@ -171,6 +171,8 @@ class Trainer(BaseTrainer):
 
         # 1, img_size*img_size, num_steps, 3
         points_cam[:,:,:,2] +=cam_tz
+
+
         points_cam_source = self.rotate_points(points_cam, view_diff)
 
         batch_size, pts_num = pts.size()[:2]
@@ -189,7 +191,9 @@ class Trainer(BaseTrainer):
         losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
         losses['att'] = self.attention_loss(output_att)
 
-        if True:
+
+
+        if False:
             patch_size = 32
             num_ray = patch_size * patch_size
             ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
@@ -208,7 +212,7 @@ class Trainer(BaseTrainer):
             # from torchvision.utils import save_image
             # save_image(gt_clr_nerf2, './patch_300.png')
 
-        else:
+        if False:
             num_ray = 1000
             ray_index = np.random.randint(0, img_size * img_size, num_ray)
             sampled_points = points_cam_source[:, ray_index]
@@ -220,20 +224,33 @@ class Trainer(BaseTrainer):
             # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
             # sampled_rays_d = rays_d_cam_source[:, ray_index]
 
+        if True:
+            num_ray = const.feature_res*const.feature_res
+            sampled_points = points_cam_source
+            sampled_z_vals = z_vals
+            sampled_rays_d_world = rays_d_cam
+
         sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
 
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-
 
         pixels_pred, pixels_final = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
                                                   sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
                                                   num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
 
 
+        points_cam_proj = self.project_points(points_cam, cam_f, cam_c, cam_tz)
+        feature_res_grid = points_cam_proj[:, :, 0].reshape(batch_size, const.feature_res, const.feature_res, 2)
+        down_target_img = F.grid_sample(input=target_img, grid=feature_res_grid, align_corners=False, mode='nearest',
+                                        padding_mode='border')
+        # save_image(down_target_img, './down_target_img.png')
 
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
-        losses['nerf_tex_final'] = self.tex_loss(pixels_final, gt_clr_nerf)
+        pred_img = pixels_pred.permute(0,2,1).reshape(batch_size, 3, const.feature_res, const.feature_res)
+        final_img = pixels_final.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
+
+        losses['nerf_tex'] = self.tex_loss(pred_img, down_target_img)#pixels_pred, gt_clr_nerf)
+        losses['nerf_tex_final'] = self.tex_loss(final_img, down_target_img)#pixels_final, gt_clr_nerf)
 
         if self.TrainGAN:
 
