@@ -155,25 +155,20 @@ class Trainer(BaseTrainer):
         fov_degree = fov * 180 / math.pi
         ray_start = cam_tz - 0.87
         ray_end = cam_tz + 0.87
-
+        num_ray = 1000
 
         num_steps = self.options.num_steps
         hierarchical= self.options.hierarchical
 
         ## todo hierarchical sampling
 
-        points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
-                                                               resolution=(const.feature_res, const.feature_res),
-                                                               device=self.device, fov=fov_degree, ray_start=ray_start,
-                                                               ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
 
         view_diff = input_batch['view_id'] - input_batch['target_view_id']
 
 
         # 1, img_size*img_size, num_steps, 3
-        points_cam[:,:,:,2] +=cam_tz
-        points_cam_source = self.rotate_points(points_cam, view_diff)
+
 
         batch_size, pts_num = pts.size()[:2]
         losses = dict()
@@ -191,12 +186,19 @@ class Trainer(BaseTrainer):
         losses['tex'] = 2*self.tex_loss(output_clr, gt_clr)
         # losses['att'] = self.attention_loss(output_att)
 
+        points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
+                                                               resolution=(const.img_res, const.img_res),
+                                                               device=self.device, fov=fov_degree, ray_start=ray_start,
+                                                               ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
 
+        points_cam[:,:,:,2] +=cam_tz
+        points_cam_source = self.rotate_points(points_cam, view_diff)
+        ray_index = np.random.randint(0, img_size * img_size, num_ray)
         ##
-        sampled_points = points_cam_source
-        sampled_z_vals = z_vals
-        sampled_rays_d_world = rays_d_cam
+        sampled_points = points_cam_source[:,ray_index]
+        sampled_z_vals = z_vals[:,ray_index]
+        sampled_rays_d_world = rays_d_cam[:, ray_index]
 
 
 
@@ -205,17 +207,16 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-
+        import pdb; pdb.set_trace()
         pixels_pred, pixels_high = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
                                                   sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
-                                                  const.feature_res*const.feature_res, num_steps, cam_f, cam_c, cam_tz, view_diff)
+                                                  num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
 
 
-
-        losses['nerf_tex'] = self.tex_loss(pixels_high, target_img, att = target_mask.permute(0,3,2,1)[:,0])
+        gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
+        gt_clr_nerf = gt_clr_nerf[:,ray_index]
+        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         # losses['nerf_consitency'] = self.tex_loss(F.interpolate(pixels_high, scale_factor=const.feature_res/const.img_res), pixels_pred.detach())
-
-        import pdb; pdb.set_trace()
 
         ## GAN loss
         if self.TrainGAN:
@@ -261,7 +262,7 @@ class Trainer(BaseTrainer):
             logging.info('Epoch %d, LR = %f' % (self.step_count, learning_rate))
             for param_group in self.optm_pamir_tex_net.param_groups:
                 param_group['lr'] = learning_rate
-        return losses, pixels_high
+        return losses
 
 
     def get_nerf(self, img, vol,img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
@@ -333,9 +334,9 @@ class Trainer(BaseTrainer):
             pixels_pred = pixels[..., :3]
             feature_pred = pixels[..., 3:]
 
-        pixels_high = self.NR(feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2))
+        # pixels_high = self.NR(feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2))
 
-        return pixels_pred, pixels_high
+        return pixels_pred, None
 
 
 

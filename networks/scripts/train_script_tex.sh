@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=2
+GPU_ID=6
 NAME='pamir_texture_nerf_0203_1000_48_coord_feature__mask_debug'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'

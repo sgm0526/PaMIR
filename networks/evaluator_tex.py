@@ -131,7 +131,7 @@ class EvaluatorTex(object):
 
 
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
-                                                               resolution=(const.feature_res, const.feature_res),
+                                                               resolution=(const.img_res, const.img_res),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
@@ -144,41 +144,42 @@ class EvaluatorTex(object):
 
         #batch_size, 512*512, num_step, 3
 
-
+        num_ray = 5000
         num_steps = const.num_steps
         hierarchical = const.hierarchical
-        #pts_clr = []
+        pts_group_num = (img_size * img_size + num_ray - 1) // num_ray
+        pts_clr = []
         # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-        sampled_points = points_cam_source[:, :, :, :] # 1, group_size, num_step, 3
-        sampled_points_proj=   points_cam_source_proj[:, :, :,:]
-        sampled_z_vals = z_vals[:, :, :,:]
-        sampled_rays_d_world  = rays_d_cam[:, :]
+        for gi in tqdm(range(pts_group_num), desc='Texture query'):
+            sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
+            sampled_points_proj=   points_cam_source_proj[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
+            sampled_z_vals = z_vals[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
+            sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
-        num_ray_part = sampled_points.size(1)
-        #num_ray -> num_ray_part
+            num_ray_part = sampled_points.size(1)
+            #num_ray -> num_ray_part
 
-        ##
+            ##
 
-        with torch.no_grad():
-            sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
-            sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-            img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+            with torch.no_grad():
+                sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
+                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+                img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
-            pixels_pred, pixels_high =self.get_nerf(img, vol, img_feat_geo, sampled_points,
-                                                         sampled_points_proj, sampled_z_vals, sampled_rays_d_world,
-                                                         hierarchical, batch_size, num_ray_part, num_steps, cam_f,
-                                                         cam_c, cam_tz, view_diff)
+                pixels_pred, pixels_high =self.get_nerf(img, vol, img_feat_geo, sampled_points,
+                                                             sampled_points_proj, sampled_z_vals, sampled_rays_d_world,
+                                                             hierarchical, batch_size, num_ray_part, num_steps, cam_f,
+                                                             cam_c, cam_tz, view_diff)
 
             #pixels 1, group_size, 3
 
         ##
+            pts_clr.append(pixels_pred.detach().cpu())
+        pts_clr = torch.cat(pts_clr, dim=1)
+        pts_clr = pts_clr.reshape(-1, img_size,img_size,3)
+        pts_clr = pts_clr.permute(0,3,1,2)
 
-        # pts_clr.append(pixels_final.detach().cpu())
-        # pts_clr = torch.cat(pts_clr, dim=1)
-        # pts_clr = pts_clr.reshape(-1, img_size,img_size,3)
-        # pts_clr = pts_clr.permute(0,3,1,2)
-
-        return pixels_high, self.rotate_points(cam_t.unsqueeze(0), view_diff)
+        return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
         self.pamir_net.eval()
@@ -449,7 +450,6 @@ class EvaluatorTex(object):
     def get_nerf(self, img, vol,img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
 
         with torch.no_grad():
-
             nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
 
             ##for hierarchical sampling
@@ -515,6 +515,6 @@ class EvaluatorTex(object):
                                                        sampled_z_vals, device=self.device)#, white_back=True)
             pixels_pred = pixels[..., :3]
             feature_pred = pixels[..., 3:]
-        pixels_high = self.NR(feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2))
+        # pixels_high = self.NR(feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2))
 
-        return pixels_pred, pixels_high
+        return pixels_pred, None

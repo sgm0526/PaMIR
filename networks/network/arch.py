@@ -804,6 +804,8 @@ class NeuralRenderer(nn.Module):
                 for i in range(n_blocks)
             ])
         self.actvn = nn.LeakyReLU(0.2, inplace=True)
+        logging.info('#trainable params of NR = %d' %
+                     sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def forward(self, x):
 

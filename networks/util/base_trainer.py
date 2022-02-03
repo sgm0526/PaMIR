@@ -90,15 +90,14 @@ class BaseTrainer(object):
                                          train_data_loader.checkpoint_batch_idx):
                 if time.time() < self.endtime:
                     batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k,v in batch.items()}
-                    out, image = self.train_step(batch)
+                    out = self.train_step(batch)
                     self.step_count += 1
                     # Tensorboard logging every summary_steps steps
                     if self.step_count % self.options.summary_steps == 0:
                         self.train_summaries(batch, out)
-                        self.summary_writer.add_images('nerf_image', image, self.step_count)
                         self.summary_writer.add_images('target_image', batch['target_img'], self.step_count)
 
-                    if False:#self.step_count % (100*self.options.summary_steps) == 0:
+                    if self.step_count % 500 == 0:
                         #self.val_summaries(batch, out)
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net
@@ -118,15 +117,17 @@ class BaseTrainer(object):
                             nerf_color = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
                                                                     batch_val['pose'], batch_val['scale'], batch_val['trans'],
                                                                     batch_val['view_id'] - batch_val['target_view_id'])
-
+                            nerf_color = nerf_color[0]
                             val_mesh_loss +=self.tex_loss(batch_val['pts_clr'], torch.Tensor(mesh_color).unsqueeze(0).cuda())
                             val_nerf_loss += self.tex_loss(batch_val['target_img'],
                                                            nerf_color.cuda())
                             #save_image(batch_val['target_img'],f'./debug/{step_val}_1.png')
+                            break
                         val_mesh_loss /= len(self.val_ds)
                         val_nerf_loss /= len(self.val_ds)
                         self.summary_writer.add_scalar('val_tex', val_mesh_loss.item(), self.step_count)
                         self.summary_writer.add_scalar('val_nerf_tex', val_nerf_loss.item(), self.step_count)
+                        self.summary_writer.add_images('val_nerf_image', nerf_color, self.step_count)
 
                     # Backup the current training stage
                     if self.step_count % (self.options.summary_steps*10) == 0:
