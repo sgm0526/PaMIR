@@ -215,8 +215,6 @@ class Trainer(BaseTrainer):
         losses['nerf_tex'] = self.tex_loss(pixels_high, target_img, att = target_mask.permute(0,3,2,1)[:,0])
         # losses['nerf_consitency'] = self.tex_loss(F.interpolate(pixels_high, scale_factor=const.feature_res/const.img_res), pixels_pred.detach())
 
-        import pdb; pdb.set_trace()
-
         ## GAN loss
         if self.TrainGAN:
             #pixels_pred : b, patch_size*patch_size, 3

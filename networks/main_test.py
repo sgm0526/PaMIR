@@ -110,8 +110,6 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
             save_image(nerf_color, f'./02030216_nerf_source_{str(i).zfill(3)}.png')
 
-        import pdb; pdb.set_trace()
-
         #mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
         #                                     batch['pose'], batch['scale'], batch['trans'])
         mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
