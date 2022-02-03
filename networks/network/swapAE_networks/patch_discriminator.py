@@ -176,7 +176,7 @@ class PatchDiscriminator(nn.Module):
     def __init__(self ):
         super().__init__()
         channel_multiplier = 2 #self.opt.netPatchD_scale_capacity
-        size = 32 #self.opt.patch_size
+        size = 512 #self.opt.patch_size
         max_nc = 512
         channels = {
             4: min(max_nc, int(256 * channel_multiplier)),
@@ -186,6 +186,7 @@ class PatchDiscriminator(nn.Module):
             64: int(16 * channel_multiplier),
             128: int(8 * channel_multiplier),
             256: int(4 * channel_multiplier),
+            512: int(2 * channel_multiplier),
         }
 
         log_size = int(math.ceil(math.log(size, 2)))
@@ -196,20 +197,19 @@ class PatchDiscriminator(nn.Module):
 
         blur_kernel = [1, 3, 3, 1] if use_antialias else [1]
 
-        convs = [('0', ConvLayer(3, in_channel, 3))]
+        convs = [ConvLayer(3, in_channel, 3)]
 
         for i in range(log_size, 2, -1):
             out_channel = channels[2 ** (i - 1)]
-
-            layer_name = str(7 - i) if i <= 6 else "%dx%d" % (2 ** i, 2 ** i)
-            convs.append((layer_name, ResBlock(in_channel, out_channel, blur_kernel)))
+            # layer_name = str(8 - i) if i <= 7 else "%dx%d" % (2 ** i, 2 ** i)
+            convs.append(ResBlock(in_channel, out_channel, blur_kernel))
 
             in_channel = out_channel
 
-        convs.append(('5', ResBlock(in_channel,max_nc * 2, downsample=False)))
-        convs.append(('6', ConvLayer(max_nc * 2, max_nc, 3, pad=0)))
+        convs.append(ResBlock(in_channel,max_nc * 2, downsample=False))
+        convs.append(ConvLayer(max_nc * 2, max_nc, 3, pad=0))
 
-        self.convs = nn.Sequential(OrderedDict(convs))
+        self.convs = nn.Sequential(*convs)
 
         out_dim = 1
 

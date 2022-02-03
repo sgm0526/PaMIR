@@ -541,7 +541,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 5
+        self.feat_ch_out = 4 + 128
         self.feat_ch_occupancy = 128
         self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
@@ -596,23 +596,21 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_feature_pred = pt_out[:, :, 3:-1]
+            # pt_tex_att = pt_out[:, :, 3:4].sigmoid()
             pt_tex_sigma = None
         else:
             pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
-            pt_tex_sigma = pt_out[:, :, 4:5]
+            pt_feature_pred = pt_out[:, :, 3:-1]
+            # pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_tex_sigma = pt_out[:, :, -1:]
 
         ##
 
-        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
-                                      mode='bilinear', padding_mode='border')
-        pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
-        pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
-        return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
+        return pt_tex_pred, pt_feature_pred, None, pt_feat_3D.squeeze(), pt_tex_sigma
 
 class TexPamirNetAttentionMultiview(BaseNetwork):
     def __init__(self):
@@ -720,3 +718,115 @@ class TexPamirNetAttentionMultiview(BaseNetwork):
 
         # pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred_multiview
         return pt_tex_pred_multiview, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
+
+
+
+from kornia.filters import filter2D
+from math import log2
+
+class Blur(nn.Module):
+    def __init__(self):
+        super().__init__()
+        f = torch.Tensor([1, 2, 1])
+        self.register_buffer('f', f)
+
+    def forward(self, x):
+        f = self.f
+        f = f[None, None, :] * f[None, :, None]
+        return filter2D(x, f, normalized=True)
+
+class NeuralRenderer(nn.Module):
+    ''' Neural renderer class
+    Args:
+        n_feat (int): number of features
+        input_dim (int): input dimension; if not equal to n_feat,
+            it is projected to n_feat with a 1x1 convolution
+        out_dim (int): output dimension
+        final_actvn (bool): whether to apply a final activation (sigmoid)
+        min_feat (int): minimum features
+        img_size (int): output image size
+        use_rgb_skip (bool): whether to use RGB skip connections
+        upsample_feat (str): upsampling type for feature upsampling
+        upsample_rgb (str): upsampling type for rgb upsampling
+        use_norm (bool): whether to use normalization
+    '''
+
+    def __init__(
+            self, n_feat=128, input_dim=128, out_dim=3, final_actvn=True,
+            min_feat=32, img_size=64, feature_size=32, use_rgb_skip=True,
+            upsample_feat="nn", upsample_rgb="bilinear", use_norm=False,
+            **kwargs):
+        super().__init__()
+        self.final_actvn = final_actvn
+        self.input_dim = input_dim
+        self.use_rgb_skip = use_rgb_skip
+        self.use_norm = use_norm
+        n_blocks = int(log2(img_size)) - int(log2(feature_size))
+
+        assert(upsample_feat in ("nn", "bilinear"))
+        if upsample_feat == "nn":
+            self.upsample_2 = nn.Upsample(scale_factor=2.)
+        elif upsample_feat == "bilinear":
+            self.upsample_2 = nn.Sequential(nn.Upsample(
+                scale_factor=2, mode='bilinear', align_corners=False), Blur())
+
+        assert(upsample_rgb in ("nn", "bilinear"))
+        if upsample_rgb == "nn":
+            self.upsample_rgb = nn.Upsample(scale_factor=2.)
+        elif upsample_rgb == "bilinear":
+            self.upsample_rgb = nn.Sequential(nn.Upsample(
+                scale_factor=2, mode='bilinear', align_corners=False), Blur())
+
+        if n_feat == input_dim:
+            self.conv_in = lambda x: x
+        else:
+            self.conv_in = nn.Conv2d(input_dim, n_feat, 1, 1, 0)
+
+        self.conv_layers = nn.ModuleList(
+            [nn.Conv2d(n_feat, n_feat // 2, 3, 1, 1)] +
+            [nn.Conv2d(max(n_feat // (2 ** (i + 1)), min_feat),
+                       max(n_feat // (2 ** (i + 2)), min_feat), 3, 1, 1)
+                for i in range(0, n_blocks - 1)]
+        )
+        if use_rgb_skip:
+            self.conv_rgb = nn.ModuleList(
+                [nn.Conv2d(input_dim, out_dim, 3, 1, 1)] +
+                [nn.Conv2d(max(n_feat // (2 ** (i + 1)), min_feat),
+                           out_dim, 3, 1, 1) for i in range(0, n_blocks)]
+            )
+        else:
+            self.conv_rgb = nn.Conv2d(
+                max(n_feat // (2 ** (n_blocks)), min_feat), 3, 1, 1)
+
+        if use_norm:
+            self.norms = nn.ModuleList([
+                nn.InstanceNorm2d(max(n_feat // (2 ** (i + 1)), min_feat))
+                for i in range(n_blocks)
+            ])
+        self.actvn = nn.LeakyReLU(0.2, inplace=True)
+
+    def forward(self, x):
+
+        net = self.conv_in(x)
+
+        if self.use_rgb_skip:
+            rgb = self.upsample_rgb(self.conv_rgb[0](x))
+
+        for idx, layer in enumerate(self.conv_layers):
+            hid = layer(self.upsample_2(net))
+            if self.use_norm:
+                hid = self.norms[idx](hid)
+            net = self.actvn(hid)
+
+            if self.use_rgb_skip:
+                rgb = rgb + self.conv_rgb[idx + 1](net)
+                if idx < len(self.conv_layers) - 1:
+                    rgb = self.upsample_rgb(rgb)
+
+        if not self.use_rgb_skip:
+            rgb = self.conv_rgb(net)
+
+        if self.final_actvn:
+            rgb = torch.sigmoid(rgb)
+        return rgb
+

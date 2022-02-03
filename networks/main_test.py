@@ -105,15 +105,18 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         for i in range(0, 370, 10 ):
 
 
-            nerf_color = evaluater.test_nerf_target(batch['img'], batch['betas'],
+            nerf_color, _ = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
 
-            save_image(nerf_color, f'./02020855_nerf_source_{str(i).zfill(3)}.png')
+            save_image(nerf_color, f'./02030216_nerf_source_{str(i).zfill(3)}.png')
 
         import pdb; pdb.set_trace()
 
-        mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
+        #mesh_color = evaluater.test_tex_pifu(batch['img'], batch['mesh_vert'], batch['betas'],
+        #                                     batch['pose'], batch['scale'], batch['trans'])
+        mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'])
+
 
         img_dir = batch['img_dir'][0]
         img_fname = os.path.split(img_dir)[1]
@@ -144,7 +147,6 @@ def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
         for i in [0]:
-
 
             nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
@@ -183,7 +185,7 @@ if __name__ == '__main__':
                                    pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                                    pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0202_1000_48_coord_alpha_patch_gan/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0203_1000_48_coord_feature/checkpoints/latest.pt'
 
     main_test_texture(output_dir,
                       output_dir,
@@ -194,4 +196,6 @@ if __name__ == '__main__':
     #                   output_dir,
     #                   pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
+
+
 

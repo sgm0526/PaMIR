@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=2
-NAME='pamir_texture_nerf_0202_1000_48_coord_alpha_patch_ganpred_debug'
+NAME='pamir_texture_nerf_0203_1000_48_coord_feature__mask_debug'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
