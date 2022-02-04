@@ -27,6 +27,6 @@ training_list_hard_fname = 'training_models_hard.txt'
 dataset_image_subfolder = 'image_data'
 dataset_mesh_subfolder = 'mesh_data'
 
-num_steps=48
+num_steps=128#48
 hierarchical=False
 

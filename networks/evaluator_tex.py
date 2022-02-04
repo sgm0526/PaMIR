@@ -189,9 +189,11 @@ class EvaluatorTex(object):
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
         cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
 
+        vol_res= 128
+
 
         pts, pts_proj = self.generate_point_grids(
-            128, const.cam_R, const.cam_t, const.cam_f, img.size(2))
+            vol_res, const.cam_R, const.cam_t, const.cam_f, img.size(2))
 
         pts = torch.from_numpy(pts).unsqueeze(0).to(self.device)
         pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
@@ -223,9 +225,17 @@ class EvaluatorTex(object):
         # import pdb
         # pdb.set_trace()
         pts_clr2 = torch.cat(pts_clr, dim=1)[0]
-        pts_clr2 = pts_clr2.reshape(128, 128, 128)
+        pts_clr2 = pts_clr2.reshape( vol_res,  vol_res,  vol_res)
         with mrcfile.new_mmap(os.path.join('./', f'{1}.mrc'), overwrite=True, shape=pts_clr2.shape, mrc_mode=2) as mrc:
             mrc.data[:] = pts_clr2
+
+        vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(pts_clr2), 15)
+        mesh = dict()
+        mesh['v'] = vertices /  vol_res - 0.5
+        mesh['f'] = simplices[:, (1, 0, 2)]
+        mesh['vn'] = normals
+
+        obj_io.save_obj_data(mesh, './sigma_mesh.obj')
         return
 
     def test_tex_featurenerf(self, img, mesh_v, betas, pose, scale, trans, qwe):
@@ -269,6 +279,8 @@ class EvaluatorTex(object):
             z_vals = torch.linspace(const.ray_start, const.ray_end, const.num_steps, device=self.device).reshape(1, 1, const.num_steps, 1).repeat(1, pts.size(1), 1, 1)
             points = ray_d.unsqueeze(2).repeat(1, 1, const.num_steps, 1) * z_vals
             points = points.reshape(1, -1, 3)
+            points = points + cam_loc
+            #import pdb; pdb.set_trace()
             points_proj = self.forward_project_points(
                 points, cam_r, cam_t, cam_f, img.size(2))
             h_grid = pts_2_proj[:, :, 0].view(1, pts.size(1), 1, 1)
@@ -286,8 +298,8 @@ class EvaluatorTex(object):
             gt_depth = pts_2[..., 2] + cam_tz
             # gt_depth = pts[..., 2] - cam_loc[..., 2] + cam_tz
             #points[..., 2] += cam_tz
-            points = points + cam_loc
-            group_size = 5000
+            #points = points + cam_loc
+            group_size = 1000 #5000
             pts_group_num = (pts.shape[1] + group_size - 1) // group_size
             points_sigma = []
             for gi in tqdm(range(pts_group_num), desc='Sigma query'):
@@ -319,14 +331,14 @@ class EvaluatorTex(object):
         pred_img = torch.cat(pred_img_list, dim=0)
         tex_sample = torch.cat(tex_sample_list, dim=0)
         value, ind = abs(depth_diff).min(dim=0)
-        import pdb; pdb.set_trace()
-        value = depth_diff[qwe]
-        # tex_sample_final = torch.gather(tex_sample, 0, ind[None,None, :, None].repeat(1, 3, 1, 1))
-        tex_sample_final = torch.gather(tex_sample, 0, torch.ones_like(ind[None,None, :, None].repeat(1, 3, 1, 1)).cuda() * qwe)
+        # import pdb; pdb.set_trace()
+        # value = depth_diff[qwe]
+        tex_sample_final = torch.gather(tex_sample, 0, ind[None,None, :, None].repeat(1, 3, 1, 1))
+        # tex_sample_final = torch.gather(tex_sample, 0, torch.ones_like(ind[None,None, :, None].repeat(1, 3, 1, 1)).cuda() * qwe)
         tex_sample_final = tex_sample_final[0, :, :, 0].permute(1,0)
-        tex_mask = (value < 0.1).unsqueeze(-1).cpu()
+        tex_mask = (value < 1).unsqueeze(-1).cpu()
         tex_final = tex_sample_final.cpu() * tex_mask + torch.zeros_like(tex_sample_final).cpu() * ~tex_mask
-        # tex_final = tex_sample_final.cpu() * tex_mask + torch.Tensor(clr) * ~tex_mask
+        #tex_final = tex_sample_final.cpu() * tex_mask + torch.Tensor(clr) * ~tex_mask
 
         return tex_final
 

@@ -102,12 +102,12 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         if not ('mesh_vert' in batch and 'mesh_face' in batch):
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
-        for i in [0,1,2,3]:
+        for i in [0]:#,1,2,3]:
             mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
                                                     batch['pose'], batch['scale'], batch['trans'], i)
             img_dir = batch['img_dir'][0]
             img_fname = os.path.split(img_dir)[1]
-            mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_side{i}.obj')
+            mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one{i}.obj')
             obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
                                   'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
                                   'vc': mesh_color.squeeze()},
