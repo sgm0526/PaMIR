@@ -94,7 +94,10 @@ class BaseTrainer(object):
                     self.step_count += 1
                     # Tensorboard logging every summary_steps steps
                     if self.step_count % self.options.summary_steps == 0:
+
                         self.train_summaries(batch, out)
+                    if self.step_count % (5*self.options.summary_steps) == 0:
+                        self.summary_writer.add_images('source_img', batch['img'], self.step_count)
                         self.summary_writer.add_images('target_img', batch['target_img'], self.step_count)
                         self.summary_writer.add_images('nerf_img', pixels_high, self.step_count)
                         self.summary_writer.add_images('down_nerf_img', pred_img, self.step_count)

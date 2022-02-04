@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=5
-NAME='pamir_texture_nerf_0204_48_coord_feature32_cat'
+NAME='pamir_texture_nerf_0204_24_coord_feature32_cat_128img_gan'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -18,7 +18,7 @@ SUMMARY_STEPS=20
 CHECKPOINTS_STEPS=20000
 TEST_STEPS=5000
 NUM_WORKERS=12
-NUM_STEPS=48
+NUM_STEPS=24
 HIERARCHICAL='False'
 
 CUDA_VISIBLE_DEVICES=${GPU_ID} python main_train_tex.py \

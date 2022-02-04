@@ -73,7 +73,8 @@ class Trainer(BaseTrainer):
         self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
 
         # neural renderer
-        self.NR = NeuralRenderer(input_dim = 128+3, out_dim=3, img_size=const.img_res, feature_size=const.feature_res).to(self.device)
+        self.decoder_output_size = 128
+        self.NR = NeuralRenderer(input_dim = 128+3, out_dim=3, img_size=self.decoder_output_size, feature_size=const.feature_res).to(self.device)
         #self.NR = ResDecoder().to(self.device)
 
 
@@ -86,7 +87,7 @@ class Trainer(BaseTrainer):
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = False
+        self.TrainGAN = True
 
         if self.TrainGAN:
             ## add for discriminator
@@ -100,7 +101,7 @@ class Trainer(BaseTrainer):
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net, 'optimizer_pamir_discriminator': self.optm_pamir_tex_discriminator}
         else:
             # Pack models and optimizers in a dict - necessary for checkpointing
-            self.models_dict = {'pamir_tex_net': self.pamir_tex_net,'pamir_tex_NR': self.NR,}
+            self.models_dict = {'pamir_tex_net': self.pamir_tex_net,'pamir_tex_NR': self.NR}
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net}
 
         # Optionally start training from a pretrained checkpoint
@@ -252,12 +253,13 @@ class Trainer(BaseTrainer):
                                         padding_mode='border')
         # save_image(down_target_img, './down_target_img.png')
 
+
         pred_img = pixels_pred.permute(0,2,1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         #final_img = pixels_final.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
 
         losses['nerf_tex'] = self.tex_loss(pred_img, down_target_img)#pixels_pred, gt_clr_nerf)
 
-        losses['nerf_tex_final'] = self.tex_loss( pixels_high, target_img, att =target_mask.permute(0,3,2,1)[:,0])
+        losses['nerf_tex_final'] = self.tex_loss( pixels_high, F.interpolate(target_img, size= self.decoder_output_size), att =F.interpolate(target_mask.permute(0,3,2,1)[:,0:], size= self.decoder_output_size)[:,0])
 
         if self.TrainGAN:
 
@@ -286,7 +288,7 @@ class Trainer(BaseTrainer):
         if self.TrainGAN:
 
             fake_score_d = self.pamir_tex_discriminator(pixels_high.detach())
-            real_score_d = self.pamir_tex_discriminator(target_img)
+            real_score_d = self.pamir_tex_discriminator(F.interpolate(target_img, size=self.decoder_output_size))
             total_loss_d = 0.
             losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
             total_loss_d+= losses['d_loss']
