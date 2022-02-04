@@ -19,7 +19,7 @@ import math
 
 from util.base_trainer import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
-from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf
+from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf, NeuralRenderer, ResDecoder
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from neural_voxelization_layer.voxelize import Voxelization
 from util.img_normalization import ImgNormalizerForResnet
@@ -72,16 +72,21 @@ class Trainer(BaseTrainer):
         self.pamir_net = PamirNet().to(self.device)
         self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
 
+        # neural renderer
+        self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res).to(self.device)
+        #self.NR = ResDecoder().to(self.device)
+
+
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
-            params=list(self.pamir_tex_net.parameters()), lr=float(self.options.lr)
+            params=[{'params' : self.pamir_tex_net.parameters()}, {'params' : self.NR.parameters()}], lr=float(self.options.lr)
         )
 
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = False
+        self.TrainGAN = True
 
         if self.TrainGAN:
             ## add for discriminator
@@ -91,11 +96,11 @@ class Trainer(BaseTrainer):
             )
 
             # Pack models and optimizers in a dict - necessary for checkpointing
-            self.models_dict = {'pamir_tex_net': self.pamir_tex_net, 'pamir_tex_discriminator': self.pamir_tex_discriminator}
+            self.models_dict = {'pamir_tex_net': self.pamir_tex_net, 'pamir_tex_NR': self.NR,'pamir_tex_discriminator': self.pamir_tex_discriminator}
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net, 'optimizer_pamir_discriminator': self.optm_pamir_tex_discriminator}
         else:
             # Pack models and optimizers in a dict - necessary for checkpointing
-            self.models_dict = {'pamir_tex_net': self.pamir_tex_net}
+            self.models_dict = {'pamir_tex_net': self.pamir_tex_net,'pamir_tex_NR': self.NR,}
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net}
 
         # Optionally start training from a pretrained checkpoint
@@ -236,7 +241,7 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-        pixels_pred, pixels_final = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
+        pixels_pred, pixels_high  = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
                                                   sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
                                                   num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
 
@@ -248,17 +253,17 @@ class Trainer(BaseTrainer):
         # save_image(down_target_img, './down_target_img.png')
 
         pred_img = pixels_pred.permute(0,2,1).reshape(batch_size, 3, const.feature_res, const.feature_res)
-        final_img = pixels_final.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
+        #final_img = pixels_final.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
 
         losses['nerf_tex'] = self.tex_loss(pred_img, down_target_img)#pixels_pred, gt_clr_nerf)
-        #losses['nerf_tex_final'] = self.tex_loss(final_img, down_target_img)#pixels_final, gt_clr_nerf)
+
+        losses['nerf_tex_final'] = self.tex_loss( pixels_high, target_img, att =target_mask.permute(0,3,2,1)[:,0])
 
         if self.TrainGAN:
 
             ## GAN loss
-            #pixels_pred : b, patch_size*patch_size, 3
-            patch_img = pixels_pred.permute(0,2,1).reshape(batch_size,3, patch_size, patch_size)
-            fake_score = self.pamir_tex_discriminator(patch_img)
+
+            fake_score = self.pamir_tex_discriminator(pixels_high)
             losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
 
 
@@ -279,32 +284,9 @@ class Trainer(BaseTrainer):
         ## update discriminator
 
         if self.TrainGAN:
-            if False:
-                ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
 
-                sampled_points = torch.gather(points_cam_source, 1,
-                                              ray_index[:, :, None, None].repeat(1, 1, num_steps, 3))
-                sampled_z_vals = torch.gather(z_vals, 1,
-                                              ray_index[:, :, None, None].repeat(1, 1, num_steps, 1))
-                sampled_rays_d_world = torch.gather(rays_d_cam, 1,
-                                                    ray_index[:, :, None].repeat(1, 1, 3))
-                gt_clr_nerf = torch.gather(gt_clr_nerf, 1,
-                                           ray_index[:, :, None].repeat(1, 1, 3))
-
-                sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
-
-                sampled_points = sampled_points.reshape(batch_size, -1, 3)
-                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-
-                pixels_pred, pixels_final = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
-                                                          sampled_z_vals, sampled_rays_d_world, hierarchical,
-                                                          batch_size,
-                                                          num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
-                patch_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, patch_size, patch_size)
-
-            gt_patch_img = gt_clr_nerf.permute(0, 2, 1).reshape(batch_size, 3, patch_size, patch_size)
-            fake_score_d = self.pamir_tex_discriminator(patch_img.detach())
-            real_score_d = self.pamir_tex_discriminator(gt_patch_img)
+            fake_score_d = self.pamir_tex_discriminator(pixels_high.detach())
+            real_score_d = self.pamir_tex_discriminator(target_img)
             total_loss_d = 0.
             losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
             total_loss_d+= losses['d_loss']
@@ -323,7 +305,7 @@ class Trainer(BaseTrainer):
             logging.info('Epoch %d, LR = %f' % (self.step_count, learning_rate))
             for param_group in self.optm_pamir_tex_net.param_groups:
                 param_group['lr'] = learning_rate
-        return losses
+        return losses, pixels_high, pred_img
 
 
     def get_nerf(self, img, vol,img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
@@ -380,22 +362,33 @@ class Trainer(BaseTrainer):
                 img, vol, all_points.reshape(batch_size, num_ray * num_steps * 2, 3),
                 all_points_proj.reshape(batch_size, num_ray * num_steps * 2, 2), img_feat_geo,
                 all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray * num_steps * 2, 1))
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
-            pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
                                                        all_z_vals, device=self.device, white_back=True)
-            pixels_pred = pixels[..., :3]
-            pixels_final = pixels[..., 3:6]
+
+            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+            feature_pred, _, _  = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
+                                                       all_z_vals, device=self.device)#, white_back=True)
+
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
 
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_clr, nerf_output_sigma], dim=-1)
-            pixels, depth, weights = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+            all_outputs = torch.cat([nerf_output_clr_,nerf_output_sigma], dim=-1)
+            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                        sampled_z_vals, device=self.device, white_back=True)
-            pixels_pred = pixels[..., :3]
-            pixels_final = pixels[..., 3:6]
 
-        return pixels_pred, pixels_final
+            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+            feature_pred, _, _= fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                       sampled_z_vals, device=self.device)  # , white_back=True)
+
+
+
+        pixels_high = self.NR(feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2))
+        #pixels_high = self.pamir_tex_net.forward_decoder(
+        #    feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2))
+
+        return pixels_pred, pixels_high
 
 
 

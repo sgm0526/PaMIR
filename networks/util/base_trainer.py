@@ -90,13 +90,16 @@ class BaseTrainer(object):
                                          train_data_loader.checkpoint_batch_idx):
                 if time.time() < self.endtime:
                     batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k,v in batch.items()}
-                    out = self.train_step(batch)
+                    out, pixels_high, pred_img = self.train_step(batch)
                     self.step_count += 1
                     # Tensorboard logging every summary_steps steps
                     if self.step_count % self.options.summary_steps == 0:
                         self.train_summaries(batch, out)
+                        self.summary_writer.add_images('target_img', batch['target_img'], self.step_count)
+                        self.summary_writer.add_images('nerf_img', pixels_high, self.step_count)
+                        self.summary_writer.add_images('down_nerf_img', pred_img, self.step_count)
 
-                    if self.step_count % (5*self.options.summary_steps) == 0:
+                    if False: #self.step_count % (5*self.options.summary_steps) == 0:
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net
                         evaluater.pamir_tex_net = self.pamir_tex_net
@@ -116,7 +119,7 @@ class BaseTrainer(object):
                             self.summary_writer.add_images('target_img', batch_val['target_img'], self.step_count)
 
 
-                    if self.step_count % (100*self.options.summary_steps) == 0:
+                    if False: #self.step_count % (100*self.options.summary_steps) == 0:
                         #self.val_summaries(batch, out)
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net

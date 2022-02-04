@@ -536,6 +536,8 @@ class TexPamirNetAttention(BaseNetwork):
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
+
+import constant as const
 class TexPamirNetAttention_nerf(BaseNetwork):
     def __init__(self):
         super(TexPamirNetAttention_nerf, self).__init__()
@@ -548,6 +550,9 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
         self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
+
+        #self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res)
+        #self.NR = ResDecoder()
 
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
@@ -615,6 +620,10 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         # pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         # pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         return pt_tex_pred, pt_feature_pred, None, pt_feat_3D.squeeze(), pt_tex_sigma
+
+    # def forward_decoder(self, x):
+    #     x = self.NR(x)
+    #     return x
 
 class TexPamirNetAttentionMultiview(BaseNetwork):
     def __init__(self):
@@ -766,6 +775,7 @@ class NeuralRenderer(nn.Module):
         self.use_norm = use_norm
         n_blocks = int(log2(img_size)) - int(log2(feature_size))
 
+
         assert(upsample_feat in ("nn", "bilinear"))
         if upsample_feat == "nn":
             self.upsample_2 = nn.Upsample(scale_factor=2.)
@@ -832,3 +842,81 @@ class NeuralRenderer(nn.Module):
         if self.final_actvn:
             rgb = torch.sigmoid(rgb)
         return rgb
+
+
+class ResnetBlock(nn.Module):
+    def __init__(self, fin, fout, fhidden=None, is_bias=True):
+        super().__init__()
+        # Attributes
+        self.is_bias = is_bias
+        self.learned_shortcut = (fin != fout)
+        self.fin = fin
+        self.fout = fout
+        if fhidden is None:
+            self.fhidden = min(fin, fout)
+        else:
+            self.fhidden = fhidden
+
+        # Submodules
+        self.conv_0 = nn.Conv2d(self.fin, self.fhidden, 3, stride=1, padding=1)
+        self.conv_1 = nn.Conv2d(self.fhidden, self.fout,
+                                3, stride=1, padding=1, bias=is_bias)
+
+        if self.learned_shortcut:
+            self.conv_s = nn.Conv2d(
+                self.fin, self.fout, 1, stride=1, padding=0, bias=False)
+
+    def actvn(self, x):
+        out = F.leaky_relu(x, 2e-1)
+        return out
+
+    def forward(self, x):
+        x_s = self._shortcut(x)
+        dx = self.conv_0(self.actvn(x))
+        dx = self.conv_1(self.actvn(dx))
+        out = x_s + 0.1*dx
+
+        return out
+
+    def _shortcut(self, x):
+        if self.learned_shortcut:
+            x_s = self.conv_s(x)
+        else:
+            x_s = x
+        return x_s
+
+
+
+class ResDecoder(nn.Module):
+    def __init__(self,):
+        super().__init__()
+        blocks = []
+        nf = 128
+        self.nlayers = 4
+        for i in range(self.nlayers):
+            nf0 = nf // (2 ** i)
+            nf1 = nf // (2 ** (i + 1))
+
+            blocks += [
+                ResnetBlock(nf0, nf1),
+                nn.Upsample(scale_factor=2)
+            ]
+        blocks += [
+            ResnetBlock(nf // (2 ** self.nlayers), nf // (2 ** self.nlayers))
+        ]
+
+        self.resnet = nn.Sequential(*blocks)
+        self.conv_img = nn.Conv2d(nf // (2 ** self.nlayers), 3, 3, padding=1)
+
+    def forward(self, x):
+
+        pixels = x
+
+        for block in self.resnet:
+            pixels = block(pixels)
+
+            # pixels = self.resnet(pixels)
+        pixels = self.conv_img(F.leaky_relu(pixels, 2e-1))
+        pixels = torch.sigmoid(pixels)
+
+        return pixels

@@ -176,14 +176,14 @@ class TrainingImgDataset(Dataset):
         except:
             raise RuntimeError('Failed to load iamge: ' + img_fpath)
 
-        assert img.shape[0] == self.img_h and img.shape[1] == self.img_w
+        assert img.shape[0] == self.img_h and img.shape[1] == self.img_w ##
         img = np.float32(cv.cvtColor(img, cv.COLOR_RGB2BGR)) / 255.
         msk = np.float32(msk) / 255.
         if len(msk.shape) == 2:
             msk = np.expand_dims(msk, axis=-1)
         img = img * msk + (1 - msk)  # white background
         img_black = img * msk
-        # img = cv.resize(img, (self.img_w, self.img_h))
+        #img = cv.resize(img, (self.img_w, self.img_h)) ##
         return img, msk
 
     def load_cams(self, data_item, view_id):
