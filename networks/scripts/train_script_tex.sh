@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=5
-NAME='pamir_texture_nerf_0204_48_coord_feature32_gan'
+NAME='pamir_texture_nerf_0204_48_coord_feature32_cat'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'

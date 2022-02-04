@@ -73,7 +73,7 @@ class Trainer(BaseTrainer):
         self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
 
         # neural renderer
-        self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res).to(self.device)
+        self.NR = NeuralRenderer(input_dim = 128+3, out_dim=3, img_size=const.img_res, feature_size=const.feature_res).to(self.device)
         #self.NR = ResDecoder().to(self.device)
 
 
@@ -86,7 +86,7 @@ class Trainer(BaseTrainer):
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = True
+        self.TrainGAN = False
 
         if self.TrainGAN:
             ## add for discriminator
@@ -368,7 +368,7 @@ class Trainer(BaseTrainer):
 
             all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
             feature_pred, _, _  = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
-                                                       all_z_vals, device=self.device)#, white_back=True)
+                                                       all_z_vals, device=self.device)#,last_back=True)
 
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
@@ -380,11 +380,14 @@ class Trainer(BaseTrainer):
 
             all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
             feature_pred, _, _= fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                       sampled_z_vals, device=self.device)  # , white_back=True)
+                                                       sampled_z_vals, device=self.device)#, last_back=True)
+
+        pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
+        feature_map = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2)
 
 
-
-        pixels_high = self.NR(feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0,3,1,2))
+        #pixels_high = self.NR(feature_map)
+        pixels_high = self.NR(torch.cat([pred_img.detach(), feature_map], 1))
         #pixels_high = self.pamir_tex_net.forward_decoder(
         #    feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2))
 
