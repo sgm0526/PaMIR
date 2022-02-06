@@ -258,8 +258,12 @@ class EvaluatorTex(object):
         depth_diff = []
         pred_img_list = []
         tex_sample_list = []
+        nerf_color_list = []
+        nerf_weights_list = []
+        nerf_sigma_list = []
+        nerf_depth_list = []
+        gt_depth_list = []
         for view_angle in [0, 90, 180, 270]:
-
             pts_2 = self.rotate_points(pts, torch.ones(1).to(self.device) * view_angle * -1)
             pts_2_proj = self.forward_project_points(
                 pts_2, cam_r, cam_t, cam_f, img.size(2))
@@ -270,7 +274,7 @@ class EvaluatorTex(object):
             # 그걸로 fancy_integration해서 각각 nerf_depth 구하기
             # 각각의 차이를 포인트마다의 list에 append하기
 
-            pred_img, cam_loc =  self.test_nerf_target(img, betas, pose, scale, trans,torch.ones(1).to(self.device)*view_angle, return_cam_loc=True)
+            pred_img, cam_loc = self.test_nerf_target(img, betas, pose, scale, trans,torch.ones(1).to(self.device)*view_angle, return_cam_loc=True)
             pred_img_list.append(pred_img)
 
             ray_d = pts - cam_loc
@@ -294,14 +298,15 @@ class EvaluatorTex(object):
             points = points.reshape(1, -1, const.num_steps, 3)
             points_proj = points_proj.reshape(1, -1, const.num_steps, 2)
 
-
-            gt_depth = pts_2[..., 2] + cam_tz
+            # import pdb; pdb.set_trace()
+            gt_depth = cam_tz - pts_2[..., 2]
             # gt_depth = pts[..., 2] - cam_loc[..., 2] + cam_tz
             #points[..., 2] += cam_tz
             #points = points + cam_loc
             group_size = 1000 #5000
             pts_group_num = (pts.shape[1] + group_size - 1) // group_size
             points_sigma = []
+            nerf_output_clr_list = []
             for gi in tqdm(range(pts_group_num), desc='Sigma query'):
                 # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
                 sampled_points = points[:, (gi * group_size):((gi + 1) * group_size), :, :]  # 1, group_size, num_step, 3
@@ -319,28 +324,48 @@ class EvaluatorTex(object):
                 ##
 
                 points_sigma.append(nerf_output_sigma.detach())
+                nerf_output_clr_list.append(nerf_output_clr.detach())
             points_sigma2 = torch.cat(points_sigma, dim=1)
             points_sigma2 = points_sigma2.reshape(1, pts.size(1), const.num_steps, 1)
-            _, nerf_depth, _= fancy_integration(points_sigma2.repeat(1, 1, 1, 2), z_vals, self.device, last_back=True)
+            nerf_output_clr2 = torch.cat(nerf_output_clr_list, dim=1)
+            nerf_output_clr2 = nerf_output_clr2.reshape(1, pts.size(1), const.num_steps, 3)
+            # _, nerf_depth, _= fancy_integration(points_sigma2.repeat(1, 1, 1, 2), z_vals, self.device, last_back=True)
+            nerf_color, nerf_depth, nerf_weights = fancy_integration(torch.cat([nerf_output_clr2,points_sigma2], dim=-1), z_vals, self.device, last_back=True)
+            nerf_color2, nerf_depth, nerf_weights = fancy_integration2(torch.cat([nerf_output_clr2,points_sigma2* 10], dim=-1), z_vals, self.device, last_back=True)
+
             nerf_depth = nerf_depth[..., 0]
             depth_diff.append(nerf_depth - gt_depth)
-
             tex_sample_list.append(tex_sample)
+            nerf_color_list.append(nerf_color)
+            nerf_weights_list.append(nerf_weights)
+            nerf_sigma_list.append(points_sigma2)
+            nerf_depth_list.append(nerf_depth)
+            gt_depth_list.append(gt_depth)
 
         depth_diff = torch.cat(depth_diff, dim=0)
         pred_img = torch.cat(pred_img_list, dim=0)
         tex_sample = torch.cat(tex_sample_list, dim=0)
-        value, ind = abs(depth_diff).min(dim=0)
-        # import pdb; pdb.set_trace()
+        nerf_color = torch.cat(nerf_color_list, dim=0)
+        nerf_weights = torch.cat(nerf_weights_list, dim=0)
+        nerf_sigmas = torch.cat(nerf_sigma_list, dim=0)
+        nerf_depths = torch.cat(nerf_depth_list, dim=0)
+        gt_depths = torch.cat(gt_depth_list, dim=0)
+        # value, ind = abs(depth_diff).min(dim=0)
+        value2, ind = gt_depths.min(dim=0)
+        value_depth_diff = torch.gather(abs(depth_diff), 0, ind[None])
         # value = depth_diff[qwe]
         tex_sample_final = torch.gather(tex_sample, 0, ind[None,None, :, None].repeat(1, 3, 1, 1))
+
         # tex_sample_final = torch.gather(tex_sample, 0, torch.ones_like(ind[None,None, :, None].repeat(1, 3, 1, 1)).cuda() * qwe)
         tex_sample_final = tex_sample_final[0, :, :, 0].permute(1,0)
-        tex_mask = (value < 1).unsqueeze(-1).cpu()
+        tex_mask = (value_depth_diff < 0.01).unsqueeze(-1).cpu()
         tex_final = tex_sample_final.cpu() * tex_mask + torch.zeros_like(tex_sample_final).cpu() * ~tex_mask
         #tex_final = tex_sample_final.cpu() * tex_mask + torch.Tensor(clr) * ~tex_mask
 
-        return tex_final
+        # weight를 극단적으로 하기 위해서 sigma x 10
+        # diff에 대해서 쓰레쉬홀딩하고 depth 최소 가져오기
+        # import pdb; pdb.set_trace()
+        return tex_final, tex_sample[...,0].permute(0,2,1) # nerf_color
 
 
 

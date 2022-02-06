@@ -103,20 +103,27 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
         for i in [0]:#,1,2,3]:
-            mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
+            mesh_vert_ori = batch['mesh_vert'].clone()
+            mesh_color, nerf_mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
                                                     batch['pose'], batch['scale'], batch['trans'], i)
             img_dir = batch['img_dir'][0]
             img_fname = os.path.split(img_dir)[1]
-            mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one{i}.obj')
+            mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one{i}_sigma10_gtdepth_diffthr.obj')
             obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
                                   'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
                                   'vc': mesh_color.squeeze()},
                                  mesh_fname)
+            if not (batch['mesh_vert'] == mesh_vert_ori).all():
+                raise NotImplementedError()
 
-
-        import pdb; pdb.set_trace()
-
-
+        for i in [0, 1, 2, 3]:
+            mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one_side_mesh_gtdepth_diffthr_color{i}.obj')
+            obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
+                                  'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+                                  'vc': nerf_mesh_color[i].squeeze()},
+                                 mesh_fname)
+        import pdb;
+        pdb.set_trace()
         for i in range(0, 370, 10 ):
 
 
@@ -198,7 +205,7 @@ if __name__ == '__main__':
                                    pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                                    pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0204_48_coord_feature32_cat_128img/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0204_24_coord_feature32_cat_128img_02/checkpoints/latest.pt'
 
     main_test_texture(output_dir,
                       output_dir,

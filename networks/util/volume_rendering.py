@@ -73,6 +73,46 @@ def fancy_integration(rgb_sigma, z_vals, device, noise_std=0.5, last_back=False,
     return rgb_final, depth_final, weights
 
 
+def fancy_integration2(rgb_sigma, z_vals, device, noise_std=0.5, last_back=False, white_back=False, clamp_mode='relu', fill_mode=None):
+    """Performs NeRF volumetric rendering."""
+
+    rgbs = rgb_sigma[..., :-1]
+    sigmas = rgb_sigma[..., -1:]
+
+    deltas = z_vals[:, :, 1:] - z_vals[:, :, :-1]
+    delta_inf = 1e10 * torch.ones_like(deltas[:, :, :1])
+    deltas = torch.cat([deltas, delta_inf], -2)
+
+    noise = torch.randn(sigmas.shape, device=device) * noise_std
+
+    if clamp_mode == 'softplus':
+        alphas = 1-torch.exp(-deltas * (F.softplus(sigmas + noise)))
+    elif clamp_mode == 'relu':
+        alphas = 1 - torch.exp(-deltas * (F.relu(sigmas + noise)))
+    else:
+        raise "Need to choose clamp mode"
+
+    alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1-alphas + 1e-10], -2)
+    weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1]
+    weights_sum = weights.sum(2)
+
+    if last_back:
+        weights[:, :, -1] += (1 - weights_sum)
+
+    rgb_final = torch.sum(weights * rgbs, -2)
+    depth_final = torch.sum(weights * z_vals, -2)
+
+    if white_back:
+        rgb_final = rgb_final + 1-weights_sum
+
+    if fill_mode == 'debug':
+        rgb_final[weights_sum.squeeze(-1) < 0.9] = torch.tensor([1., 0, 0], device=rgb_final.device)
+    elif fill_mode == 'weight':
+        rgb_final = weights_sum.expand_as(rgb_final)
+
+    return rgb_final, depth_final, weights
+
+
 def get_initial_rays_trig(n, num_steps, device, fov, resolution, ray_start, ray_end):
     """Returns sample points, z_vals, and ray directions in camera space."""
 
