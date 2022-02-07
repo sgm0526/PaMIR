@@ -543,7 +543,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 4 +128
+        self.feat_ch_out = 4 + 64
         self.feat_ch_occupancy = 128
         self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
@@ -842,6 +842,35 @@ class NeuralRenderer(nn.Module):
         if self.final_actvn:
             rgb = torch.sigmoid(rgb)
         return rgb
+
+
+class NeuralRenderer_coord(nn.Module):
+    ''' Neural renderer class
+    Args:
+        n_feat (int): number of features
+        input_dim (int): input dimension; if not equal to n_feat,
+            it is projected to n_feat with a 1x1 convolution
+        out_dim (int): output dimension
+        final_actvn (bool): whether to apply a final activation (sigmoid)
+        min_feat (int): minimum features
+        img_size (int): output image size
+        use_rgb_skip (bool): whether to use RGB skip connections
+        upsample_feat (str): upsampling type for feature upsampling
+        upsample_rgb (str): upsampling type for rgb upsampling
+        use_norm (bool): whether to use normalization
+    '''
+
+    def __init__(
+            self, n_feat=64):
+        super().__init__()
+
+        layers = [nn. Linear(n_feat, n_feat), nn.LeakyReLU(0.2), nn.Linear(n_feat, 2), nn.Tanh()]
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        coord = self.layers(x)
+        return coord
+
 
 
 class ResnetBlock(nn.Module):
