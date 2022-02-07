@@ -13,7 +13,7 @@ class GlobalAveragePooling(nn.Module):
         return x.mean([2, 3])
 
 class AdapterBlock(nn.Module):
-    def __init__(self, output_channels, in_channels=6):
+    def __init__(self, output_channels, in_channels=3):
         super().__init__()
         self.model = nn.Sequential(
             nn.Conv2d(in_channels, output_channels, 1, padding=0),

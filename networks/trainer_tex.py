@@ -74,7 +74,7 @@ class Trainer(BaseTrainer):
         self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
 
         # neural renderer
-        self.decoder_output_size = 128 #512
+        self.decoder_output_size = 512
         self.NR = NeuralRenderer(input_dim = 128+3, out_dim=3, img_size=self.decoder_output_size, feature_size=const.feature_res).to(self.device)
         #self.NR = ResDecoder().to(self.device)
 
@@ -271,8 +271,8 @@ class Trainer(BaseTrainer):
 
             ## GAN loss
             #fake_input = pixels_high
-            #fake_input = pixels_high*target_mask_decoderouputsize
-            fake_input = torch.cat([pixels_high,img_decoderouputsize],1)
+            fake_input = pixels_high*target_mask_decoderouputsize
+            #fake_input = torch.cat([pixels_high,img_decoderouputsize],1)
             fake_score = self.pamir_tex_discriminator(fake_input)
             losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
 
@@ -295,12 +295,12 @@ class Trainer(BaseTrainer):
 
         if self.TrainGAN:
             #fake_d_input = pixels_high.detach().clone()
-            #fake_d_input = pixels_high.detach().clone()*target_mask_decoderouputsize
-            fake_d_input = torch.cat([pixels_high.detach().clone(), img_decoderouputsize],1)
+            fake_d_input = pixels_high.detach().clone()*target_mask_decoderouputsize
+            #fake_d_input = torch.cat([pixels_high.detach().clone(), img_decoderouputsize],1)
             fake_score_d = self.pamir_tex_discriminator(fake_d_input )
             #real_d_input = F.interpolate(target_img, size=self.decoder_output_size)
-            #real_d_input = F.interpolate(target_img, size=self.decoder_output_size)*target_mask_decoderouputsize
-            real_d_input = torch.cat([F.interpolate(target_img, size=self.decoder_output_size) , img_decoderouputsize],1)
+            real_d_input = F.interpolate(target_img, size=self.decoder_output_size)*target_mask_decoderouputsize
+            #real_d_input = torch.cat([F.interpolate(target_img, size=self.decoder_output_size) , img_decoderouputsize],1)
             real_d_input.requires_grad = True
             real_score_d = self.pamir_tex_discriminator(real_d_input)
             total_loss_d = 0.

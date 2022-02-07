@@ -537,7 +537,7 @@ class TexPamirNetAttention(BaseNetwork):
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
 
-import constant as const
+
 class TexPamirNetAttention_nerf(BaseNetwork):
     def __init__(self):
         super(TexPamirNetAttention_nerf, self).__init__()
