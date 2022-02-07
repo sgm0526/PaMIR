@@ -20,6 +20,7 @@ import math
 from util.base_trainer import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
 from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf, NeuralRenderer, ResDecoder
+from network.discriminator import ProgressiveDiscriminator
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from neural_voxelization_layer.voxelize import Voxelization
 from util.img_normalization import ImgNormalizerForResnet
@@ -73,7 +74,7 @@ class Trainer(BaseTrainer):
         self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
 
         # neural renderer
-        self.decoder_output_size = 128
+        self.decoder_output_size = 128 #512
         self.NR = NeuralRenderer(input_dim = 128+3, out_dim=3, img_size=self.decoder_output_size, feature_size=const.feature_res).to(self.device)
         #self.NR = ResDecoder().to(self.device)
 
@@ -91,7 +92,8 @@ class Trainer(BaseTrainer):
 
         if self.TrainGAN:
             ## add for discriminator
-            self.pamir_tex_discriminator = PatchDiscriminator().to(self.device)
+            #self.pamir_tex_discriminator = PatchDiscriminator().to(self.device)
+            self.pamir_tex_discriminator = ProgressiveDiscriminator().to(self.device)
             self.optm_pamir_tex_discriminator = torch.optim.Adam(
                 params=list(self.pamir_tex_discriminator.parameters()), lr=float(self.options.lr)
             )
@@ -154,8 +156,8 @@ class Trainer(BaseTrainer):
         img_size = const.img_res
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov * 180 / math.pi
-        ray_start = cam_tz - 0.87
-        ray_end = cam_tz + 0.87
+        ray_start = const.ray_start#cam_tz - 0.87
+        ray_end = const.ray_end#cam_tz + 0.87
 
 
         num_steps = self.options.num_steps
@@ -259,13 +261,19 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pred_img, down_target_img)#pixels_pred, gt_clr_nerf)
 
-        losses['nerf_tex_final'] = self.tex_loss( pixels_high, F.interpolate(target_img, size= self.decoder_output_size), att =F.interpolate(target_mask.permute(0,3,2,1)[:,0:], size= self.decoder_output_size)[:,0])
+        target_mask_decoderouputsize= F.interpolate(target_mask.permute(0,3,2,1)[:,0:], size= self.decoder_output_size)
+        target_img_decoderouputsize =  F.interpolate(target_img, size= self.decoder_output_size)
+        img_decoderouputsize= F.interpolate(img, size= self.decoder_output_size)
+
+        losses['nerf_tex_final'] = self.tex_loss( pixels_high, F.interpolate(target_img, size= self.decoder_output_size), att =target_mask_decoderouputsize[:,0])
 
         if self.TrainGAN:
 
             ## GAN loss
-
-            fake_score = self.pamir_tex_discriminator(pixels_high)
+            #fake_input = pixels_high
+            #fake_input = pixels_high*target_mask_decoderouputsize
+            fake_input = torch.cat([pixels_high,img_decoderouputsize],1)
+            fake_score = self.pamir_tex_discriminator(fake_input)
             losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
 
 
@@ -286,12 +294,32 @@ class Trainer(BaseTrainer):
         ## update discriminator
 
         if self.TrainGAN:
-
-            fake_score_d = self.pamir_tex_discriminator(pixels_high.detach())
-            real_score_d = self.pamir_tex_discriminator(F.interpolate(target_img, size=self.decoder_output_size))
+            #fake_d_input = pixels_high.detach().clone()
+            #fake_d_input = pixels_high.detach().clone()*target_mask_decoderouputsize
+            fake_d_input = torch.cat([pixels_high.detach().clone(), img_decoderouputsize],1)
+            fake_score_d = self.pamir_tex_discriminator(fake_d_input )
+            #real_d_input = F.interpolate(target_img, size=self.decoder_output_size)
+            #real_d_input = F.interpolate(target_img, size=self.decoder_output_size)*target_mask_decoderouputsize
+            real_d_input = torch.cat([F.interpolate(target_img, size=self.decoder_output_size) , img_decoderouputsize],1)
+            real_d_input.requires_grad = True
+            real_score_d = self.pamir_tex_discriminator(real_d_input)
             total_loss_d = 0.
             losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
-            total_loss_d+= losses['d_loss']
+
+            if True: # add R1 regularization
+                grad_real, = torch.autograd.grad(
+                    outputs=real_score_d.sum(),
+                    inputs=real_d_input,
+                    create_graph=True
+                )
+                lambda_R1 = 10
+                #grad_penalty = (grad_real.view(grad_real.size(0), -1).norm(2, dim=1) ** 2).mean()
+                grad_penalty = (grad_real.reshape(grad_real.size(0), -1).norm(2, dim=1) ** 2).mean()
+                grad_penalty = 0.5 * lambda_R1 * grad_penalty
+                losses['d_loss_gp'] = grad_penalty
+
+
+            total_loss_d+= losses['d_loss'] + losses['d_loss_gp']
 
             self.optm_pamir_tex_discriminator.zero_grad()
             total_loss_d.backward()
@@ -390,8 +418,7 @@ class Trainer(BaseTrainer):
 
         #pixels_high = self.NR(feature_map)
         pixels_high = self.NR(torch.cat([pred_img.detach(), feature_map], 1))
-        #pixels_high = self.pamir_tex_net.forward_decoder(
-        #    feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2))
+        #pixels_high = self.NR(pred_img, feature_map )
 
         return pixels_pred, pixels_high
 

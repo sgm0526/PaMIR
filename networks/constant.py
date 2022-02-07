@@ -11,8 +11,8 @@ cam_R = np.eye(3, dtype=np.float32) * np.array([[1, -1, -1]], dtype=np.float32)
 cam_tz = 10.0
 cam_t = np.array([[0, 0, cam_tz]], dtype=np.float32)
 
-ray_start = cam_tz - 0.87
-ray_end = cam_tz + 0.87
+ray_start = cam_tz - 0.2# 0.87
+ray_end = cam_tz + 0.2#0.87
 
 vol_res = 128
 semantic_encoding_sigma = 0.05

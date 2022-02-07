@@ -121,8 +121,8 @@ class EvaluatorTex(object):
         img_size = const.img_res
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov * 180 / math.pi
-        ray_start = cam_tz - 0.87  # (
-        ray_end = cam_tz + 0.87
+        ray_start = const.ray_start#cam_tz - 0.87  # (
+        ray_end = const.ray_end#cam_tz + 0.87
         num_steps = const.num_steps
 
 

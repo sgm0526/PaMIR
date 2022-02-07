@@ -886,6 +886,242 @@ class ResnetBlock(nn.Module):
         return x_s
 
 
+class AdaIN(nn.Module):
+    def __init__(self, style_dim, num_features):
+        super().__init__()
+        self.norm = nn.InstanceNorm2d(num_features, affine=False)
+        #self.norm = nn.GroupNorm(num_features//4, num_features,affine=False)
+        # self.norm =nn.BatchNorm2d(num_features, affine=False)
+        self.fc = nn.Linear(style_dim, num_features * 2)
+
+    def forward(self, x, s):
+        h = self.fc(s)
+        h = h.view(h.size(0), h.size(1), 1, 1)
+        gamma, beta = torch.chunk(h, chunks=2, dim=1)
+        return (1 + gamma) * self.norm(x) + beta
+
+
+class AdaINResnetBlock(nn.Module):
+    def __init__(self, fin, fout, fhidden=None, is_bias=True):
+        super().__init__()
+        # Attributes
+        self.is_bias = is_bias
+        self.learned_shortcut = (fin != fout)
+        self.fin = fin
+        self.fout = fout
+        if fhidden is None:
+            self.fhidden = min(fin, fout)
+        else:
+            self.fhidden = fhidden
+
+        # Submodules
+        self.conv_0 = nn.Conv2d(self.fin, self.fhidden, 3, stride=1, padding=1)
+        self.conv_1 = nn.Conv2d(self.fhidden, self.fout,
+                                3, stride=1, padding=1, bias=is_bias)
+
+        self.norm1 = AdaIN(512, self.fin)
+        self.norm2 = AdaIN(512, self.fhidden)
+
+
+        if self.learned_shortcut:
+            self.conv_s = nn.Conv2d(
+                self.fin, self.fout, 1, stride=1, padding=0, bias=False)
+
+    def actvn(self, x):
+        out = F.leaky_relu(x, 2e-1)
+        return out
+
+    def forward(self, x, s):
+        x_s = self._shortcut(x)
+        dx=self.norm1(x,s)
+        dx = self.conv_0(self.actvn(dx))
+        dx = self.norm2(dx, s)
+        dx = self.conv_1(self.actvn(dx))
+        out = x_s + 0.1 * dx
+
+        return out
+
+    def _shortcut(self, x):
+        if self.learned_shortcut:
+            x_s = self.conv_s(x)
+        else:
+            x_s = x
+        return x_s
+
+class SPADE(nn.Module):
+    def __init__(self, label_nc, norm_nc):
+        super().__init__()
+
+
+        param_free_norm_type='instance'
+
+        if param_free_norm_type == 'instance':
+            self.param_free_norm = nn.InstanceNorm2d(norm_nc, affine=False)
+        elif param_free_norm_type == 'batch':
+            self.param_free_norm = nn.BatchNorm2d(norm_nc, affine=False)
+        else:
+            raise ValueError('%s is not a recognized param-free norm type in SPADE'
+                             % param_free_norm_type)
+
+        # The dimension of the intermediate embedding space. Yes, hardcoded.
+        nhidden = 128
+        ks=3
+        pw = ks // 2
+        self.mlp_shared = nn.Sequential(
+            nn.Conv2d(label_nc, nhidden, kernel_size=ks, padding=pw),
+            nn.ReLU()
+        )
+        self.mlp_gamma = nn.Conv2d(nhidden, norm_nc, kernel_size=ks, padding=pw)
+        self.mlp_beta = nn.Conv2d(nhidden, norm_nc, kernel_size=ks, padding=pw)
+
+    def forward(self, x, segmap):
+
+        # Part 1. generate parameter-free normalized activations
+        normalized = self.param_free_norm(x)
+
+        # Part 2. produce scaling and bias conditioned on semantic map
+        segmap = F.interpolate(segmap, size=x.size()[2:], mode='nearest')#, recompute_scale_factor=True)
+        actv = self.mlp_shared(segmap)
+        gamma = self.mlp_gamma(actv)
+        beta = self.mlp_beta(actv)
+
+        # apply scale and bias
+        out = normalized * (1 + gamma) + beta
+
+        return out
+
+
+class SPADEResnetBlock(nn.Module):
+    def __init__(self, fin, fout, fhidden=None, is_bias=True):
+        super().__init__()
+        # Attributes
+        self.is_bias = is_bias
+        self.learned_shortcut = (fin != fout)
+        self.fin = fin
+        self.fout = fout
+        if fhidden is None:
+            self.fhidden = min(fin, fout)
+        else:
+            self.fhidden = fhidden
+
+        # Submodules
+        self.conv_0 = nn.Conv2d(self.fin, self.fhidden, 3, stride=1, padding=1)
+        self.conv_1 = nn.Conv2d(self.fhidden, self.fout,
+                                3, stride=1, padding=1, bias=is_bias)
+
+
+        self.norm1 = SPADE(128, self.fin)
+        self.norm2 = SPADE(128, self.fhidden)
+
+        if self.learned_shortcut:
+            self.conv_s = nn.Conv2d(
+                self.fin, self.fout, 1, stride=1, padding=0, bias=False)
+
+    def actvn(self, x):
+        out = F.leaky_relu(x, 2e-1)
+        return out
+
+    def forward(self, x,s):
+        x_s = self._shortcut(x)
+        dx = self.norm1(x, s)
+        dx = self.conv_0(self.actvn(dx))
+        dx = self.norm2(dx, s)
+        dx = self.conv_1(self.actvn(dx))
+        out = x_s + 0.1 * dx
+
+        return out
+
+    def _shortcut(self, x):
+        if self.learned_shortcut:
+            x_s = self.conv_s(x)
+        else:
+            x_s = x
+        return x_s
+
+
+
+# class ResDecoder(nn.Module):
+#     def __init__(self,):
+#         super().__init__()
+#         blocks = []
+#         nf = 128
+#         self.nlayers = 2
+#         for i in range(self.nlayers):
+#             nf0 = nf // (2 ** i)
+#             nf1 = nf // (2 ** (i + 1))
+#
+#             if i ==0:
+#                 nf0 = nf0 + 3
+#
+#             blocks += [
+#                 ResnetBlock(nf0, nf1),
+#                 nn.Upsample(scale_factor=2)
+#             ]
+#         blocks += [
+#             ResnetBlock(nf // (2 ** self.nlayers), nf // (2 ** self.nlayers))
+#         ]
+#
+#         self.resnet = nn.Sequential(*blocks)
+#         self.conv_img = nn.Conv2d(nf // (2 ** self.nlayers), 3, 3, padding=1)
+#
+#     def forward(self, x):
+#
+#         pixels = x
+#
+#         for block in self.resnet:
+#             pixels = block(pixels)
+#
+#             # pixels = self.resnet(pixels)
+#         pixels = self.conv_img(F.leaky_relu(pixels, 2e-1))
+#         pixels = torch.sigmoid(pixels)
+#
+#         return pixels
+
+
+# class ResDecoder(nn.Module):
+#     def __init__(self,):
+#         super().__init__()
+#         blocks = []
+#         nf = 128
+#         self.nlayers = 4
+#         for i in range(self.nlayers):
+#             nf0 = nf // (2 ** i)
+#             nf1 = nf // (2 ** (i + 1))
+#
+#             #if i ==0:
+#             #    nf0 = nf0 + 3
+#
+#             blocks += [
+#                 #ResnetBlock(nf0, nf1),
+#                 SPADEResnetBlock(nf0, nf1),
+#                 nn.Upsample(scale_factor=2)
+#             ]
+#         blocks += [
+#             #ResnetBlock(nf // (2 ** self.nlayers), nf // (2 ** self.nlayers))
+#             SPADEResnetBlock(nf // (2 ** self.nlayers), nf // (2 ** self.nlayers))
+#         ]
+#
+#         self.resnet = nn.Sequential(*blocks)
+#         self.conv_img = nn.Conv2d(nf // (2 ** self.nlayers), 3, 3, padding=1)
+#
+#     def forward(self, x,s):
+#
+#         pixels = x
+#
+#         for block in self.resnet:
+#             #import pdb; pdb.set_trace()
+#             if block.__class__.__name__ == "SPADEResnetBlock":
+#                 pixels = block(pixels, s)
+#             else:
+#                 pixels = block(pixels)
+#
+#             # pixels = self.resnet(pixels)
+#         pixels = self.conv_img(F.leaky_relu(pixels, 2e-1))
+#         pixels = torch.sigmoid(pixels)
+#
+#         return pixels
+
+
 
 class ResDecoder(nn.Module):
     def __init__(self,):
@@ -894,26 +1130,35 @@ class ResDecoder(nn.Module):
         nf = 128
         self.nlayers = 4
         for i in range(self.nlayers):
-            nf0 = nf // (2 ** i)
-            nf1 = nf // (2 ** (i + 1))
+            nf0 = nf
+            nf1 = nf
+
+            if i ==0:
+               nf0 = 3
 
             blocks += [
-                ResnetBlock(nf0, nf1),
+                #ResnetBlock(nf0, nf1),
+                SPADEResnetBlock(nf0, nf1),
                 nn.Upsample(scale_factor=2)
             ]
         blocks += [
-            ResnetBlock(nf // (2 ** self.nlayers), nf // (2 ** self.nlayers))
+            #ResnetBlock(nf // (2 ** self.nlayers), nf // (2 ** self.nlayers))
+            SPADEResnetBlock(nf , nf )
         ]
 
         self.resnet = nn.Sequential(*blocks)
-        self.conv_img = nn.Conv2d(nf // (2 ** self.nlayers), 3, 3, padding=1)
+        self.conv_img = nn.Conv2d(nf, 3, 3, padding=1)
 
-    def forward(self, x):
+    def forward(self, x,s):
 
         pixels = x
 
         for block in self.resnet:
-            pixels = block(pixels)
+            #import pdb; pdb.set_trace()
+            if block.__class__.__name__ == "SPADEResnetBlock":
+                pixels = block(pixels, s)
+            else:
+                pixels = block(pixels)
 
             # pixels = self.resnet(pixels)
         pixels = self.conv_img(F.leaky_relu(pixels, 2e-1))
