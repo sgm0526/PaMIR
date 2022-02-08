@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=5
-NAME='pamir_nerf_0208_1000_48_02_warpedrgb_offset_texboth_offset2'
+GPU_ID=6
+NAME='pamir_nerf_0208_1000_48_02_warpedrgb_offset_texboth_offset2_lossonboth_'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'

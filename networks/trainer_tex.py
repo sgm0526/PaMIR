@@ -192,7 +192,8 @@ class Trainer(BaseTrainer):
             img, vol, pts, pts_proj, img_feat_geo, feat_occupancy)
 
         # import pdb; pdb.set_trace
-        losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
+        losses['tex'] = (self.tex_loss(output_clr[...,:3], gt_clr)+self.tex_loss(output_clr[...,3:], gt_clr) + self.tex_loss(output_clr_, gt_clr))*2/3
+        #losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
         #losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
         #losses['att'] = self.attention_loss(output_att)
 
@@ -247,7 +248,10 @@ class Trainer(BaseTrainer):
 
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
-        losses['nerf_tex_final'] =self.tex_loss( pixels_warped , gt_clr_nerf)
+        #losses['nerf_tex_final'] =self.tex_loss( pixels_warped , gt_clr_nerf)
+        losses['nerf_tex_final'] = self.tex_loss(pixels_warped[...,:3], gt_clr_nerf)
+        losses['nerf_tex_final2'] = self.tex_loss(pixels_warped[...,3:], gt_clr_nerf)
+
 
         if self.TrainGAN:
 

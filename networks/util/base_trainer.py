@@ -134,7 +134,8 @@ class BaseTrainer(object):
                         source_image= torch.cat(source_image_list, dim=0)
 
                         self.summary_writer.add_images('nerf_img_pred', nerf_color_pred , self.step_count)
-                        self.summary_writer.add_images('nerf_img_wapred', nerf_color_warped , self.step_count)
+                        self.summary_writer.add_images('nerf_img_wapred', nerf_color_warped[:,:3] , self.step_count)
+                        self.summary_writer.add_images('nerf_img_wapred2', nerf_color_warped[:,3:], self.step_count)
                         self.summary_writer.add_images('target_image', target_image, self.step_count)
                         self.summary_writer.add_images('source_image', source_image, self.step_count)
 
