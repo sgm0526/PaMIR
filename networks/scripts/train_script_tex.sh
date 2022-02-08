@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=2
-NAME='pamir_coord'
+GPU_ID=5
+NAME='pamir_nerf_0208_1000_48_02_warpedrgb_offset_texboth_offset2'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -18,8 +18,7 @@ SUMMARY_STEPS=20
 CHECKPOINTS_STEPS=20000
 TEST_STEPS=5000
 NUM_WORKERS=12
-NUM_STEPS=24
-HIERARCHICAL='False'
+
 
 CUDA_VISIBLE_DEVICES=${GPU_ID} python main_train_tex.py \
 --name ${NAME} \
@@ -39,6 +38,4 @@ CUDA_VISIBLE_DEVICES=${GPU_ID} python main_train_tex.py \
 --checkpoint_steps ${CHECKPOINTS_STEPS} \
 --test_steps ${TEST_STEPS} \
 --num_workers ${NUM_WORKERS} \
---num_steps ${NUM_STEPS} \
---hierarchical ${HIERARCHICAL} \
 --shuffle_train --debug

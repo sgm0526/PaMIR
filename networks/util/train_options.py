@@ -39,8 +39,6 @@ class TrainOptions(object):
         dataloading.add_argument('--view_num_per_item', type=int, default=60, help='view_num_per_item')
         dataloading.add_argument('--point_num', type=int, default=5000, help='number of point samples')
 
-        dataloading.add_argument('--num_steps', type=int, default=24, help='view_num_per_item')
-        dataloading.add_argument('--hierarchical',type=str2bool, default=True, help='number of point samples')
 
         train = self.parser.add_argument_group('Training Options')
         train.add_argument('--num_epochs', type=int, default=50, help='Total number of training epochs')

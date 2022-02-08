@@ -74,14 +74,13 @@ class Trainer(BaseTrainer):
 
         # neural renderer
         self.decoder_output_size = 128
-        self.NR = NeuralRenderer_coord().to(self.device)
+        #self.NR = NeuralRenderer_coord().to(self.device)
         #self.NR = ResDecoder().to(self.device)
-
 
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
-            params=[{'params' : self.pamir_tex_net.parameters()}, {'params' : self.NR.parameters()}], lr=float(self.options.lr)
+            params=list(self.pamir_tex_net.parameters()), lr=float(self.options.lr)
         )
 
         # loses
@@ -101,7 +100,7 @@ class Trainer(BaseTrainer):
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net, 'optimizer_pamir_discriminator': self.optm_pamir_tex_discriminator}
         else:
             # Pack models and optimizers in a dict - necessary for checkpointing
-            self.models_dict = {'pamir_tex_net': self.pamir_tex_net,'pamir_tex_NR': self.NR}
+            self.models_dict = {'pamir_tex_net': self.pamir_tex_net}
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net}
 
         # Optionally start training from a pretrained checkpoint
@@ -154,12 +153,11 @@ class Trainer(BaseTrainer):
         img_size = const.img_res
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov * 180 / math.pi
-        ray_start = cam_tz - 0.87
-        ray_end = cam_tz + 0.87
+        ray_start = const.ray_start#cam_tz - 0.87
+        ray_end = const.ray_end#cam_tz + 0.87
 
-
-        num_steps = self.options.num_steps
-        hierarchical= self.options.hierarchical
+        num_steps = const.num_steps
+        hierarchical = const.hierarchical
 
         ## todo hierarchical sampling
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
@@ -194,8 +192,8 @@ class Trainer(BaseTrainer):
             img, vol, pts, pts_proj, img_feat_geo, feat_occupancy)
 
         # import pdb; pdb.set_trace
-        #losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
-        losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
+        losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
+        #losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
         #losses['att'] = self.attention_loss(output_att)
 
 
@@ -232,7 +230,7 @@ class Trainer(BaseTrainer):
             # sampled_rays_d = rays_d_cam_source[:, ray_index]
 
         if False:
-            num_ray = const.feature_res*const.feature_res
+            num_ray = const.feature_res*const.feature_ress
             sampled_points = points_cam_source
             sampled_z_vals = z_vals
             sampled_rays_d_world = rays_d_cam
@@ -242,20 +240,14 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-        coord_pred = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
-                                                  sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
-                                                  num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
-        pixels_pred = F.grid_sample(input=img.to(self.device), grid=coord_pred.reshape(batch_size, num_ray, 1, 2), align_corners=False,
-                                   mode='bilinear', padding_mode='border')
-
-        pixels_pred = pixels_pred[..., 0].permute(0, 2, 1)
-        # save_image(down_target_img, './down_target_img.png')
+        pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
+                                                 sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
+                                                 num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
 
 
-        # pred_img = pixels_pred.permute(0,2,1).reshape(batch_size, 3, const.feature_res, const.feature_res)
-        #final_img = pixels_final.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
 
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)#pixels_pred, gt_clr_nerf)
+        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
+        losses['nerf_tex_final'] =self.tex_loss( pixels_warped , gt_clr_nerf)
 
         if self.TrainGAN:
 
@@ -305,8 +297,8 @@ class Trainer(BaseTrainer):
                 param_group['lr'] = learning_rate
         return losses
 
-
-    def get_nerf(self, img, vol,img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
+    def get_nerf(self, img, vol, img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals,
+                 sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
 
         with torch.no_grad():
             nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
@@ -362,31 +354,30 @@ class Trainer(BaseTrainer):
                 all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray * num_steps * 2, 1))
             all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
-                                                       all_z_vals, device=self.device, white_back=True)
+                                                  all_z_vals, device=self.device, white_back=True)
 
             all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-            feature_pred, _, _  = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
-                                                       all_z_vals, device=self.device)#,last_back=True)
+            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
+                                                   all_z_vals, device=self.device, white_back=True)
 
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
 
-            # all_outputs = torch.cat([nerf_output_clr_,nerf_output_sigma], dim=-1)
-            # pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-            #                                            sampled_z_vals, device=self.device, white_back=True)
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                  sampled_z_vals, device=self.device, white_back=True)
 
             all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-            feature_pred, _, _= fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                       sampled_z_vals, device=self.device)#, last_back=True)
+            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                   sampled_z_vals, device=self.device, white_back=True)
+
+        #pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
+        #source_warped_img = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)
 
 
-        #pixels_high = self.NR(feature_map)
-        coord_pred = self.NR(feature_pred)
-        #pixels_high = self.pamir_tex_net.forward_decoder(
-        #    feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2))
 
-        return coord_pred
+        return pixels_pred, feature_pred
 
 
 

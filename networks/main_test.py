@@ -102,28 +102,32 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         if not ('mesh_vert' in batch and 'mesh_face' in batch):
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
-        for i in [0]:#,1,2,3]:
-            mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
-                                                    batch['pose'], batch['scale'], batch['trans'], i)
-            img_dir = batch['img_dir'][0]
-            img_fname = os.path.split(img_dir)[1]
-            mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one{i}.obj')
-            obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
-                                  'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
-                                  'vc': mesh_color.squeeze()},
-                                 mesh_fname)
-
-
-        import pdb; pdb.set_trace()
+        # for i in [0]:#,1,2,3]:
+        #     mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
+        #                                             batch['pose'], batch['scale'], batch['trans'], i)
+        #     img_dir = batch['img_dir'][0]
+        #     img_fname = os.path.split(img_dir)[1]
+        #     mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one{i}.obj')
+        #     obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
+        #                           'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
+        #                           'vc': mesh_color.squeeze()},
+        #                          mesh_fname)
+        #
+        #
+        # import pdb; pdb.set_trace()
 
 
         for i in range(0, 370, 10 ):
 
 
-            nerf_color, nerf_color_low = evaluater.test_nerf_target(batch['img'], batch['betas'],
+            nerf_color, nerf_color_wapred = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
 
-            save_image(nerf_color, f'./0204_nerf_source_{str(i).zfill(3)}.png')
+            save_image(nerf_color, f'./0208_nerf_source_{str(i).zfill(3)}.png')
+            save_image(nerf_color_wapred, f'./0208_nerfwapred_source_{str(i).zfill(3)}.png')
+
+        import pdb;
+        pdb.set_trace()
 
 
 
@@ -198,7 +202,7 @@ if __name__ == '__main__':
                                    pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                                    pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_nerf_0204_48_coord_feature32_cat_128img/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0208_1000_48_02_warpedrgb_offset/checkpoints/latest.pt'
 
     main_test_texture(output_dir,
                       output_dir,
