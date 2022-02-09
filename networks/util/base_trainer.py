@@ -102,7 +102,7 @@ class BaseTrainer(object):
                         # self.summary_writer.add_images('nerf_img', pixels_high, self.step_count)
                         # self.summary_writer.add_images('down_nerf_img', pred_img, self.step_count)
 
-                    if self.step_count % (50*self.options.summary_steps) == 0:
+                    if self.step_count % (5*self.options.summary_steps) == 0:
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net
                         evaluater.pamir_tex_net = self.pamir_tex_net

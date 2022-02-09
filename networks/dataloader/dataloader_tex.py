@@ -62,10 +62,10 @@ class TrainingImgDataset(Dataset):
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
 
         if self.training:
-            self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
+            self.data_list = load_data_list(dataset_dir, 'data_list_0001.txt')
             self.len = len(self.data_list) * self.view_num_per_item
         else:
-            self.data_list = load_data_list(dataset_dir, 'data_list_test.txt')
+            self.data_list = load_data_list(dataset_dir, 'data_list_0001.txt')
             self.model_2_viewindex = [138,155,195,73,303,225,240,333,136,197,222,272,291,298,147,38,194,275,348,40,1,13,325,273,186]
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
             self.len = len(self.data_list) #* self.view_num_per_item
@@ -130,7 +130,7 @@ class TrainingImgDataset(Dataset):
 
 
 
-        pts_r = self.rotate_points(pts, view_id)
+        # pts_r = self.rotate_points(pts, view_id)
         pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
         # pts_clr = pts_clr * alpha + beta
         pose, betas, trans, scale = self.load_smpl_parameters(data_item)
@@ -141,7 +141,7 @@ class TrainingImgDataset(Dataset):
             'view_id': view_id,
             'data_item': data_item,
             'img': torch.from_numpy(img.transpose((2, 0, 1))),
-            'pts': torch.from_numpy(pts_r),
+            'pts': torch.from_numpy(pts),
             'pts_proj': torch.from_numpy(pts_proj),
             'pts_clr': torch.from_numpy(pts_clr),
             # 'pts_clr': torch.from_numpy(pts_clr),

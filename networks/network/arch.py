@@ -200,7 +200,7 @@ class MLP_NeRF(BaseNetwork):
         self.conv_color = nn.Conv2d(in_channels=inter_channels[3], out_channels=out_channels-1,
                                kernel_size=1, stride=1, padding=0, bias=bias)
         self.conv_sigma = nn.Sequential(
-            norm_fn(nn.Conv2d(in_channels=inter_channels[3] + occ_channels,
+            norm_fn(nn.Conv2d(in_channels=inter_channels[3],
                               out_channels=inter_channels[3],
                               kernel_size=1, stride=1, padding=0, bias=bias)),
             nn.LeakyReLU(0.2, inplace=True),
@@ -209,21 +209,21 @@ class MLP_NeRF(BaseNetwork):
         )
         self.init_weights()
 
-    def forward(self, x, feat_occupancy):
+    def forward(self, x):
         out = self.conv0(x)
         out = self.conv1(torch.cat([x, out], dim=1))
         out = self.conv2(torch.cat([x, out], dim=1))
         out = self.conv3(torch.cat([x, out], dim=1))
         color = self.conv_color(out)
-        sigma = self.conv_sigma(torch.cat([out, feat_occupancy], dim=1))
+        sigma = self.conv_sigma(out)
         return torch.cat([color, sigma], dim=1)
 
-    def forward_sigma(self, x, feat_occupancy):
+    def forward_sigma(self, x):
         out = self.conv0(x)
         out = self.conv1(torch.cat([x, out], dim=1))
         out = self.conv2(torch.cat([x, out], dim=1))
         out = self.conv3(torch.cat([x, out], dim=1))
-        sigma = self.conv_sigma(torch.cat([out, feat_occupancy], dim=1))
+        sigma = self.conv_sigma(out)
         return sigma
 
     def forward_color(self, x):
@@ -545,11 +545,11 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_3D = 32
         self.feat_ch_out = 3 + 1
         self.feat_ch_occupancy = 128
-        self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
-        self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
+        # self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
+        # self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
+        self.add_module('mlp', MLP_NeRF(num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
         #self.add_module('mlp2',
         #                MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3, self.feat_ch_occupancy,
         #                         2))
@@ -557,15 +557,15 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         #self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res)
         #self.NR = ResDecoder()
 
-        logging.info('#trainable params of 2d encoder = %d' %
-                     sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
-        logging.info('#trainable params of 3d encoder = %d' %
-                     sum(p.numel() for p in self.ve.parameters() if p.requires_grad))
+        # logging.info('#trainable params of 2d encoder = %d' %
+        #              sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
+        # logging.info('#trainable params of 3d encoder = %d' %
+        #              sum(p.numel() for p in self.ve.parameters() if p.requires_grad))
         logging.info('#trainable params of mlp = %d' %
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
 
-    def forward(self, img, vol, pts, pts_proj, img_feat_geo, feat_occupancy):
+    def forward(self, pts):
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
@@ -574,50 +574,44 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
 
-        _2d_grid = self.generate_2d_grids(img.shape[2])
-        _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
-                   [1, 0], :, :]
-        img_gridconcat = torch.cat([img, _2d_grid], 1)
-        img_feat_tex = self.cg( img_gridconcat)
-        img_feat = torch.cat([img_feat_tex, img_feat_geo], dim=1)
-
-        h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
-        v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
-        grid_2d = torch.cat([h_grid, v_grid], dim=-1)
+        # _2d_grid = self.generate_2d_grids(img.shape[2])
+        # _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
+        #            [1, 0], :, :]
+        # img_gridconcat = torch.cat([img, _2d_grid], 1)
+        # img_feat_tex = self.cg( img_gridconcat)
+        # img_feat = torch.cat([img_feat_tex, img_feat_geo], dim=1)
+        #
+        # h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
+        # v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
+        # grid_2d = torch.cat([h_grid, v_grid], dim=-1)
 
         pts = pts * 2.0  # corrects coordinates for torch in-network sampling
-        x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
-        y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
-        z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
-        grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
-        vol_feat = self.ve(vol, intermediate_output=False)
-
-        pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
-                                   mode='bilinear', padding_mode='border')
-        pt_feat_3D = F.grid_sample(input=vol_feat, grid=grid_3d, align_corners=False,
-                                   mode='bilinear', padding_mode='border')
-        pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
-
-        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
+        # x_grid = pts[:, :, 0].view(batch_size, point_num, 1, 1, 1)
+        # y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
+        # z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
+        # grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
+        # vol_feat = self.ve(vol, intermediate_output=False)
+        #
+        # pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
+        #                            mode='bilinear', padding_mode='border')
+        # pt_feat_3D = F.grid_sample(input=vol_feat, grid=grid_3d, align_corners=False,
+        #                            mode='bilinear', padding_mode='border')
+        # pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
+        #
+        # pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
 
         ##add coordinate
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
 
         #import pdb; pdb.set_trace()
-        if feat_occupancy is None:
-            pt_out = self.mlp.forward_color(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
-            pt_out = pt_out.permute([0, 2, 3, 1])
-            pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
-            pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
-            pt_tex_sigma = None
-        else:
-            pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
-            pt_out = pt_out.permute([0, 2, 3, 1])
-            pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
-            pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
-            pt_tex_sigma = pt_out[:, :, -1:]
+
+
+        pt_out = self.mlp(pts_pe.permute(0, 2, 1).unsqueeze(-1))
+        pt_out = pt_out.permute([0, 2, 3, 1])
+        pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
+        pt_tex_pred = pt_out[:, :, :3].sigmoid()
+        #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
+        pt_tex_sigma = pt_out[:, :, -1:]
 
         ##
 
@@ -639,7 +633,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         ##
 
         #pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
-        return pt_tex_pred, None, None, pt_feat_3D.squeeze(), pt_tex_sigma
+        return pt_tex_pred, None, None, None, pt_tex_sigma
 
     def generate_2d_grids(self, res):
         x_coords = np.array(range(0, res), dtype=np.float32)
