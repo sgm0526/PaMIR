@@ -108,7 +108,6 @@ class BaseTrainer(object):
                         evaluater.pamir_tex_net = self.pamir_tex_net
 
                         nerf_color_pred_list =[]
-                        nerf_color_wapred_list=[]
                         target_image_list=[]
                         source_image_list=[]
                         for step_val, batch_val in enumerate(tqdm(val_data_loader, desc='Epoch ' + str(epoch),
@@ -119,22 +118,19 @@ class BaseTrainer(object):
                             batch_val = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in
                                          batch_val.items()}
 
-                            nerf_color_pred, nerf_color_warped = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
+                            nerf_color_pred = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
                                                                     batch_val['pose'], batch_val['scale'],
                                                                     batch_val['trans'],
                                                                     batch_val['view_id'] - batch_val['target_view_id'])
                             nerf_color_pred_list.append(nerf_color_pred)
-                            nerf_color_wapred_list.append(nerf_color_warped )
                             target_image_list.append(batch_val['target_img'])
                             source_image_list.append(batch_val['img'])
 
                         nerf_color_pred= torch.cat(nerf_color_pred_list, dim=0)
-                        nerf_color_warped = torch.cat(nerf_color_wapred_list, dim=0)
                         target_image= torch.cat(target_image_list, dim=0)
                         source_image= torch.cat(source_image_list, dim=0)
 
                         self.summary_writer.add_images('nerf_img_pred', nerf_color_pred , self.step_count)
-                        self.summary_writer.add_images('nerf_img_wapred', nerf_color_warped , self.step_count)
                         self.summary_writer.add_images('target_image', target_image, self.step_count)
                         self.summary_writer.add_images('source_image', source_image, self.step_count)
 
