@@ -142,6 +142,7 @@ class Trainer(BaseTrainer):
         gt_pose = input_batch['pose']
         gt_scale = input_batch['scale']
         gt_trans = input_batch['trans']
+        import pdb; pdb.set_trace()
 
         target_img = input_batch['target_img']
 

@@ -104,10 +104,10 @@ class EvaluatorTex(object):
         pts_ov = pts_ov.reshape([test_res, test_res, test_res])
         return pts_ov
 
-    def test_nerf_target(self, img, betas, pose, scale, trans, view_diff, return_cam_loc=False):
+    def test_nerf_target(self, img, betas, pose, scale, trans, source_view_id, target_view_id, return_cam_loc=False):
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
-
+        view_diff = source_view_id - target_view_id
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
         vol = self.voxelization(gt_vert_cam)
 
@@ -175,7 +175,8 @@ class EvaluatorTex(object):
 
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
-            return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
+            raise NotImplementedError()
+            return pts_clr_pred, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
         return pts_clr_pred
 
