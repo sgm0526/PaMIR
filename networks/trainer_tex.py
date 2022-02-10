@@ -187,14 +187,14 @@ class Trainer(BaseTrainer):
             gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
             vol = self.voxelization(gt_vert_cam)    # we simply use ground-truth SMPL for when training texture module
             # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-            # feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts_r, pts_proj)
+            feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts_r, pts_proj)
 
-        # output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(
-        #     pts)
+        output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(
+            pts, feat_occupancy)
         #
         # import pdb; pdb.set_trace
         # losses['tex'] = self.tex_loss(output_clr_, gt_clr)
-        #losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
+        losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
         #losses['att'] = self.attention_loss(output_att)
 
 
