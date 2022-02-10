@@ -81,8 +81,6 @@ def get_initial_rays_trig(n, num_steps, device, fov, resolution, ray_start, ray_
     # Y is flipped to follow image memory layouts.
     x, y = torch.meshgrid(torch.linspace(-1, 1, W, device=device),
                         torch.linspace(1, -1, H, device=device))
-    # x, y = torch.meshgrid(torch.linspace(-1, 1, W, device=device),
-    #                       torch.linspace(-1, 1, H, device=device))
 
     x = x.T.flatten()
     y = y.T.flatten()
@@ -92,6 +90,62 @@ def get_initial_rays_trig(n, num_steps, device, fov, resolution, ray_start, ray_
 
 
     z_vals = torch.linspace(ray_start, ray_end, num_steps, device=device).reshape(1, num_steps, 1).repeat(W*H, 1, 1)
+
+
+    points = rays_d_cam.unsqueeze(1).repeat(1, num_steps, 1) * z_vals
+
+    points = torch.stack(n*[points])
+    z_vals = torch.stack(n*[z_vals])
+    rays_d_cam = torch.stack(n*[rays_d_cam]).to(device)
+
+    return points, z_vals, rays_d_cam
+
+def get_initial_rays_trig2(n, num_steps, device, fov, resolution, ray_start, ray_end):
+    """Returns sample points, z_vals, and ray directions in camera space."""
+
+    W, H = resolution
+    # Create full screen NDC (-1 to +1) coords [x, y, 0, 1].
+
+    x, y = torch.meshgrid(torch.linspace(-1, 1, W, device=device),
+                          torch.linspace(-1, 1, H, device=device))
+
+    x = x.T.flatten()
+    y = y.T.flatten()
+    z = 1 * torch.ones_like(x, device=device) / np.tan((2 * math.pi * fov / 360) / 2)
+
+    rays_d_cam = normalize_vecs(torch.stack([x, y, z], -1))
+
+
+    z_vals = torch.linspace(ray_start, ray_end, num_steps, device=device).reshape(1, num_steps, 1).repeat(W*H, 1, 1)
+
+
+    points = rays_d_cam.unsqueeze(1).repeat(1, num_steps, 1) * z_vals
+
+    points = torch.stack(n*[points])
+    z_vals = torch.stack(n*[z_vals])
+    rays_d_cam = torch.stack(n*[rays_d_cam]).to(device)
+
+    return points, z_vals, rays_d_cam
+
+def get_initial_rays_trig3(n, num_steps, device, fov, resolution, ray_start, ray_end):
+    """Returns sample points, z_vals, and ray directions in camera space."""
+
+    W, H = resolution
+    # Create full screen NDC (-1 to +1) coords [x, y, 0, 1].
+
+    x, y = torch.meshgrid(torch.linspace(-1, 1, W, device=device),
+                          torch.linspace(1, -1, H, device=device))
+
+    x = x.T.flatten()
+    y = y.T.flatten()
+    z = 1 * torch.ones_like(x, device=device) / np.tan((2 * math.pi * fov / 360) / 2)
+
+    rays_d_cam = normalize_vecs(torch.stack([x, y, z], -1))
+
+
+    z_vals = torch.linspace(ray_start, ray_end, num_steps, device=device).reshape(1, num_steps, 1).repeat(W*H, 1, 1)
+
+
     points = rays_d_cam.unsqueeze(1).repeat(1, num_steps, 1) * z_vals
 
     points = torch.stack(n*[points])

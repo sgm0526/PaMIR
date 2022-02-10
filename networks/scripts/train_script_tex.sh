@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=6
-NAME='pamir_nerf_0208_1000_48_02_warpedrgb_offset_texboth_offset2_lossonboth_'
+GPU_ID=7
+NAME='pamir_nerf_0208_1000_48_03_test_onesample_global_3dloss_nerf_featocc_'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -13,7 +13,7 @@ LOG_DIR='./results'
 DATASET_DIR='/home/nas1_temp/dataset/Thuman'
 VIEW_NUM_PER_ITEM=360
 POINT_NUM=5000
-NUM_EPOCHS=200
+NUM_EPOCHS=2000
 SUMMARY_STEPS=20
 CHECKPOINTS_STEPS=20000
 TEST_STEPS=5000

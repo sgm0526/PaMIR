@@ -104,7 +104,7 @@ class EvaluatorTex(object):
         pts_ov = pts_ov.reshape([test_res, test_res, test_res])
         return pts_ov
 
-    def test_nerf_target(self, img, betas, pose, scale, trans, view_diff, return_cam_loc=False):
+    def test_nerf_target(self, img, betas, pose, scale, trans, source_view,target_view, return_cam_loc=False):
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
@@ -135,9 +135,12 @@ class EvaluatorTex(object):
 
         # 1, img_size*img_size, num_steps, 3
         points_cam[:, :, :, 2] += cam_tz
-        points_cam_source = self.rotate_points(points_cam, view_diff)
+
+        points_cam_source = self.rotate_points(points_cam, source_view-target_view)
+        points_cam_global = self.rotate_points(points_cam, - target_view)
         points_cam_source_proj = self.project_points(points_cam_source, cam_f, cam_c, cam_tz)
         #batch_size, 512*512, num_step, 3
+
 
 
 
@@ -145,10 +148,12 @@ class EvaluatorTex(object):
         num_ray= 5000
         pts_group_num = (img_size *img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
-        pts_clr_warped = []
+
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
             sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
+            sampled_points_global = points_cam_global[:, (gi * num_ray):((gi + 1) * num_ray), :,
+                             :]  # 1, group_size, num_step, 3
             sampled_points_proj=   points_cam_source_proj[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
             sampled_z_vals = z_vals[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
             sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
@@ -160,27 +165,38 @@ class EvaluatorTex(object):
 
             with torch.no_grad():
                 sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
+                sampled_points_global =  sampled_points_global.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
                 sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
                 img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
-                pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
-                                                           sampled_z_vals, sampled_rays_d_world, hierarchical,
-                                                           batch_size,
-                                                           num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff)
+                ##
+                with torch.no_grad():
+                    nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
+
+                nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+                    img, vol, sampled_points_global, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
+
+                all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+                pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray_part, num_steps, -1),
+                                                      sampled_z_vals, device=self.device, white_back=True)
+
+                #pixels_pred = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
+                #                                           sampled_z_vals, sampled_rays_d_world, hierarchical,
+                #                                           batch_size,
+                #                                           num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff)
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
-            pts_clr_warped.append(pixels_warped.detach().cpu())
+
         ##
         pts_clr_pred= torch.cat(pts_clr_pred, dim=1)
         pts_clr_pred = pts_clr_pred.permute(0,2,1).reshape(batch_size, 3, img_size,img_size)
-        pts_clr_warped= torch.cat(pts_clr_warped, dim=1)
-        pts_clr_warped= pts_clr_warped.permute(0, 2, 1).reshape(batch_size, 3, img_size, img_size)
+
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
             return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
-        return pts_clr_pred, pts_clr_warped
+        return pts_clr_pred
 
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
@@ -529,9 +545,7 @@ class EvaluatorTex(object):
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
                                                   all_z_vals, device=self.device, white_back=True)
 
-            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
-                                                   all_z_vals, device=self.device, white_back=True)
+
 
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
@@ -541,11 +555,7 @@ class EvaluatorTex(object):
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                   sampled_z_vals, device=self.device, white_back=True)
 
-            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                   sampled_z_vals, device=self.device, white_back=True)
-
         # pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         # source_warped_img = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)
 
-        return pixels_pred, feature_pred
+        return pixels_pred
