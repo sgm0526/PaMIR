@@ -175,7 +175,7 @@ class EvaluatorTex(object):
 
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
-            return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
+            return pts_clr_pred, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
         return pts_clr_pred
 
@@ -532,8 +532,6 @@ class EvaluatorTex(object):
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                sampled_points, nerf_feat_occupancy)
-            import pdb;
-            pdb.set_trace()
 
             all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),

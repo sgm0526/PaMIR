@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=1
+GPU_ID=6
 NAME='pamir_nerf_overfitting_occupancy_texloss'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
