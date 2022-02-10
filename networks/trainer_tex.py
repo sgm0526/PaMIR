@@ -136,6 +136,7 @@ class Trainer(BaseTrainer):
         # training data
         img = input_batch['img']
         pts = input_batch['pts']    # [:, :-self.options.point_num]
+        pts_r = input_batch['pts_r']
         pts_proj = input_batch['pts_proj']  # [:, :-self.options.point_num]
         gt_clr = input_batch['pts_clr']   # [:, :-self.options.point_num]
         gt_betas = input_batch['betas']
@@ -182,11 +183,11 @@ class Trainer(BaseTrainer):
         batch_size, pts_num = pts.size()[:2]
         losses = dict()
 
-        # with torch.no_grad():
-        #     gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
-        #     vol = self.voxelization(gt_vert_cam)    # we simply use ground-truth SMPL for when training texture module
-        #     img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        #     feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts, pts_proj)
+        with torch.no_grad():
+            gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
+            vol = self.voxelization(gt_vert_cam)    # we simply use ground-truth SMPL for when training texture module
+            # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+            # feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts_r, pts_proj)
 
         # output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(
         #     pts)
@@ -240,7 +241,7 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-        pixels_pred = self.get_nerf(sampled_points,
+        pixels_pred = self.get_nerf(img, vol, sampled_points, sampled_points_proj,
                                                  sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
                                                  num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
 
@@ -296,10 +297,11 @@ class Trainer(BaseTrainer):
                 param_group['lr'] = learning_rate
         return losses
 
-    def get_nerf(self,sampled_points, sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
+    def get_nerf(self, img, vol, sampled_points, sampled_points_proj, sampled_z_vals,
+                 sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
 
         with torch.no_grad():
-            # nerf_feat_occupancy = self.pamir_net.get_mlp_feature(sampled_points, sampled_points_proj)
+            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
 
             ##for hierarchical sampling
             if hierarchical:
@@ -358,8 +360,8 @@ class Trainer(BaseTrainer):
             raise NotImplementedError()
 
         else:
-            nerf_output_clr_, _, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
-                sampled_points)
+            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+               sampled_points, nerf_feat_occupancy)
 
             all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),

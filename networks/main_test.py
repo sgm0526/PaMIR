@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from util import util
 from util import obj_io
+import numpy as np
 
 
 def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint):
@@ -120,11 +121,10 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         for i in range(0, 370, 10 ):
 
 
-            nerf_color, nerf_color_wapred = evaluater.test_nerf_target(batch['img'], batch['betas'],
-                                             batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
+            nerf_color = evaluater.test_nerf_target(batch['img'], batch['betas'],
+                                             batch['pose'], batch['scale'], batch['trans'],  torch.Tensor([0]).cuda(), torch.Tensor([np.random.randint(359)]).cuda())
 
             save_image(nerf_color, f'./0208_nerf_source_{str(i).zfill(3)}.png')
-            save_image(nerf_color_wapred, f'./0208_nerfwapred_source_{str(i).zfill(3)}.png')
 
         import pdb;
         pdb.set_trace()
@@ -182,8 +182,8 @@ def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
 if __name__ == '__main__':
     iternum=50
-    input_image_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data/'
-    output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_debug/'
+    input_image_dir = '/home/nas1_temp/minsoolee/Human/PaMIR_ours/networks/results/THuman_0000_0/'
+    output_dir = '/home/nas1_temp/minsoolee/Human/PaMIR_ours/networks/results/THuman_0000_0/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -202,7 +202,7 @@ if __name__ == '__main__':
                                    pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                                    pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0208_1000_48_02_warpedrgb_offset/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas1_temp/minsoolee/Human/PaMIR_ours/networks/results/pamir_nerf_overfitting_occupancy_re/checkpoints/latest.pt'
 
     main_test_texture(output_dir,
                       output_dir,

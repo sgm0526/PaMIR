@@ -160,6 +160,13 @@ class MLP(BaseNetwork):
         out = self.conv4(out)
         return out
 
+    def forward2(self, x):
+        out = self.conv0(x)
+        out = self.conv1(torch.cat([x, out], dim=1))
+        out = self.conv2(torch.cat([x, out], dim=1))
+        out = self.conv3(torch.cat([x, out], dim=1))
+        out2 = self.conv4(out)
+        return out, out2
 
 class MLP_NeRF(BaseNetwork):
     """
@@ -200,7 +207,7 @@ class MLP_NeRF(BaseNetwork):
         self.conv_color = nn.Conv2d(in_channels=inter_channels[3], out_channels=out_channels-1,
                                kernel_size=1, stride=1, padding=0, bias=bias)
         self.conv_sigma = nn.Sequential(
-            norm_fn(nn.Conv2d(in_channels=inter_channels[3],
+            norm_fn(nn.Conv2d(in_channels=inter_channels[3] + occ_channels,
                               out_channels=inter_channels[3],
                               kernel_size=1, stride=1, padding=0, bias=bias)),
             nn.LeakyReLU(0.2, inplace=True),
@@ -209,21 +216,21 @@ class MLP_NeRF(BaseNetwork):
         )
         self.init_weights()
 
-    def forward(self, x):
+    def forward(self, x, feat_occupancy):
         out = self.conv0(x)
         out = self.conv1(torch.cat([x, out], dim=1))
         out = self.conv2(torch.cat([x, out], dim=1))
         out = self.conv3(torch.cat([x, out], dim=1))
         color = self.conv_color(out)
-        sigma = self.conv_sigma(out)
+        sigma = self.conv_sigma(torch.cat([out, feat_occupancy], dim=1))
         return torch.cat([color, sigma], dim=1)
 
-    def forward_sigma(self, x):
+    def forward_sigma(self, x, feat_occupancy):
         out = self.conv0(x)
         out = self.conv1(torch.cat([x, out], dim=1))
         out = self.conv2(torch.cat([x, out], dim=1))
         out = self.conv3(torch.cat([x, out], dim=1))
-        sigma = self.conv_sigma(out)
+        sigma = self.conv_sigma(torch.cat([out, feat_occupancy], dim=1))
         return sigma
 
     def forward_color(self, x):
@@ -545,8 +552,8 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_3D = 32
         self.feat_ch_out = 3 + 1
         self.feat_ch_occupancy = 128
-        # self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
-        # self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
+        self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
+        self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
         self.add_module('mlp', MLP_NeRF(num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
@@ -557,15 +564,15 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         #self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res)
         #self.NR = ResDecoder()
 
-        # logging.info('#trainable params of 2d encoder = %d' %
-        #              sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
-        # logging.info('#trainable params of 3d encoder = %d' %
-        #              sum(p.numel() for p in self.ve.parameters() if p.requires_grad))
+        logging.info('#trainable params of 2d encoder = %d' %
+                     sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
+        logging.info('#trainable params of 3d encoder = %d' %
+                     sum(p.numel() for p in self.ve.parameters() if p.requires_grad))
         logging.info('#trainable params of mlp = %d' %
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
 
-    def forward(self, pts):
+    def forward(self, pts, feat_occupancy):
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
@@ -606,7 +613,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         #import pdb; pdb.set_trace()
 
 
-        pt_out = self.mlp(pts_pe.permute(0, 2, 1).unsqueeze(-1))
+        pt_out = self.mlp(pts_pe.permute(0, 2, 1).unsqueeze(-1),  feat_occupancy)
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()

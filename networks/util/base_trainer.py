@@ -117,11 +117,14 @@ class BaseTrainer(object):
                                 break
                             batch_val = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in
                                          batch_val.items()}
-
                             nerf_color_pred = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
                                                                     batch_val['pose'], batch_val['scale'],
                                                                     batch_val['trans'],
-                                                                    -batch_val['target_view_id'])
+                                                                    batch_val['view_id'],
+                                                                    torch.Tensor([np.random.randint(359)]).cuda()
+
+                                                                         #batch_val['target_view_id']
+                                                                         )
                             nerf_color_pred_list.append(nerf_color_pred)
                             target_image_list.append(batch_val['target_img'])
                             source_image_list.append(batch_val['img'])

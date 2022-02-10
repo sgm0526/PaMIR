@@ -130,7 +130,7 @@ class TrainingImgDataset(Dataset):
 
 
 
-        # pts_r = self.rotate_points(pts, view_id)
+        pts_r = self.rotate_points(pts, view_id)
         pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
         # pts_clr = pts_clr * alpha + beta
         pose, betas, trans, scale = self.load_smpl_parameters(data_item)
@@ -142,6 +142,7 @@ class TrainingImgDataset(Dataset):
             'data_item': data_item,
             'img': torch.from_numpy(img.transpose((2, 0, 1))),
             'pts': torch.from_numpy(pts),
+            'pts_r': torch.from_numpy(pts_r),
             'pts_proj': torch.from_numpy(pts_proj),
             'pts_clr': torch.from_numpy(pts_clr),
             # 'pts_clr': torch.from_numpy(pts_clr),
