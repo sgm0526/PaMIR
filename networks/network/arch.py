@@ -659,11 +659,11 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3 + self.img_feat_ch, self.feat_ch_occupancy, self.feat_ch_out))
+        self.add_module('mlp', MLP_NeRF(self.feat_ch_3D + num_freq*2*3+3 + self.img_feat_ch, self.feat_ch_occupancy, self.feat_ch_out))
         # self.add_module('mlp2',
         #                 MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3, self.feat_ch_occupancy,
         #                          2))
-        self.attention = MultiHeadAttention(4, 256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.img_feat_ch, 4, 4)
+        self.attention = MultiHeadAttention(4, self.feat_ch_3D + num_freq*2*3+3, self.img_feat_ch, 4, 4)
         self.pe_k = PosEnSine(self.img_feat_ch // 2)
         self.img_feat_encoder = nn.Sequential(*[
             nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
@@ -721,7 +721,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                                    mode='bilinear', padding_mode='border')
         pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
 
-        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
+        pt_feat = torch.cat([pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
 
         ##add coordinate
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch

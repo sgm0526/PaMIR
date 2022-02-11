@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=5
-NAME='pamir_nerf_transformer_16x16imgfeat'
+GPU_ID=6
+NAME='./attention_ablation/pamir_nerf_transformer_16x16imgfeat_removeimgfeat'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
