@@ -159,11 +159,11 @@ class EvaluatorTex(object):
 
             with torch.no_grad():
                 sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
-                # sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
                 #
                 # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
-                pixels_pred = self.get_nerf(sampled_points,
+                pixels_pred = self.get_nerf(img, vol, sampled_points, sampled_points_proj,
                                                            sampled_z_vals, sampled_rays_d_world, hierarchical,
                                                            batch_size,
                                                            num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff)
@@ -468,11 +468,11 @@ class EvaluatorTex(object):
         sampled_points_proj = sampled_points_proj[..., :2]
         return sampled_points_proj
 
-    def get_nerf(self,sampled_points, sampled_z_vals,
+    def get_nerf(self, img, vol, sampled_points, sampled_points_proj, sampled_z_vals,
                  sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff):
 
         with torch.no_grad():
-            # nerf_feat_occupancy = self.pamir_net.get_mlp_feature(sampled_points, sampled_points_proj)
+            nerf_feat_occupancy, occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
 
             ##for hierarchical sampling
             if hierarchical:
@@ -534,8 +534,9 @@ class EvaluatorTex(object):
         else:
             nerf_output_clr_, _, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                 sampled_points)
-
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            # all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            occupancy[occupancy<0.4] = 0
+            all_outputs = torch.cat([nerf_output_clr_, occupancy.squeeze(1) * 5000], dim=-1)
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                   sampled_z_vals, device=self.device, white_back=True)
 

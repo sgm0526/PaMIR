@@ -160,6 +160,14 @@ class MLP(BaseNetwork):
         out = self.conv4(out)
         return out
 
+    def forward2(self, x):
+        out = self.conv0(x)
+        out = self.conv1(torch.cat([x, out], dim=1))
+        out = self.conv2(torch.cat([x, out], dim=1))
+        out = self.conv3(torch.cat([x, out], dim=1))
+        occupancy = self.conv4(out)
+        return out, occupancy
+
 
 class MLP_NeRF(BaseNetwork):
     """
@@ -344,8 +352,8 @@ class PamirNet(BaseNetwork):
                                    mode='bilinear', padding_mode='border')
         pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
         pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1)
-        pt_feature = self.mlp.forward0(pt_feat)  # shape = [batch_size, channels, point_num, 1]
-        return pt_feature
+        pt_feature, occupancy = self.mlp.forward2(pt_feat)  # shape = [batch_size, channels, point_num, 1]
+        return pt_feature, occupancy
 
 
 

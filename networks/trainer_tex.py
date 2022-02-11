@@ -142,7 +142,7 @@ class Trainer(BaseTrainer):
         gt_pose = input_batch['pose']
         gt_scale = input_batch['scale']
         gt_trans = input_batch['trans']
-        import pdb; pdb.set_trace()
+
 
         target_img = input_batch['target_img']
 
@@ -199,55 +199,55 @@ class Trainer(BaseTrainer):
 
 
 
-        if False:
-            patch_size = 32
-            num_ray = patch_size * patch_size
-            ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
-
-            sampled_points = torch.gather(points_cam_source, 1,
-                                          ray_index[:, :, None, None].repeat(1, 1, num_steps, 3))
-            sampled_z_vals = torch.gather(z_vals, 1,
-                                          ray_index[:, :, None, None].repeat(1, 1, num_steps, 1))
-            sampled_rays_d_world = torch.gather(rays_d_cam, 1,
-                                                ray_index[:, :, None].repeat(1, 1, 3))
-            gt_clr_nerf = torch.gather(gt_clr_nerf, 1,
-                                       ray_index[:, :, None].repeat(1, 1, 3))
-
-            # gt_clr_nerf2 = gt_clr_nerf.reshape(3, patch_size, patch_size, 3)
-            # gt_clr_nerf2 = gt_clr_nerf2.permute(0, 3, 1, 2)
-            # from torchvision.utils import save_image
-            # save_image(gt_clr_nerf2, './patch_300.png')
-
-        if True:
-            num_ray = 5000
-            ray_index = np.random.randint(0, img_size * img_size, num_ray)
-            sampled_points = points_cam_source[:, ray_index]
-            sampled_z_vals = z_vals[:, ray_index]
-            sampled_rays_d_world = rays_d_cam[:, ray_index]
-
-            gt_clr_nerf = gt_clr_nerf[:, ray_index]
-
-            # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
-            # sampled_rays_d = rays_d_cam_source[:, ray_index]
-
-        if False:
-            num_ray = const.feature_res*const.feature_ress
-            sampled_points = points_cam_source
-            sampled_z_vals = z_vals
-            sampled_rays_d_world = rays_d_cam
-
-        sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
-
-        sampled_points = sampled_points.reshape(batch_size, -1, 3)
-        sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-
-        pixels_pred = self.get_nerf(sampled_points,
-                                                 sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
-                                                 num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
-
-
-
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
+        # if False:
+        #     patch_size = 32
+        #     num_ray = patch_size * patch_size
+        #     ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
+        #
+        #     sampled_points = torch.gather(points_cam_source, 1,
+        #                                   ray_index[:, :, None, None].repeat(1, 1, num_steps, 3))
+        #     sampled_z_vals = torch.gather(z_vals, 1,
+        #                                   ray_index[:, :, None, None].repeat(1, 1, num_steps, 1))
+        #     sampled_rays_d_world = torch.gather(rays_d_cam, 1,
+        #                                         ray_index[:, :, None].repeat(1, 1, 3))
+        #     gt_clr_nerf = torch.gather(gt_clr_nerf, 1,
+        #                                ray_index[:, :, None].repeat(1, 1, 3))
+        #
+        #     # gt_clr_nerf2 = gt_clr_nerf.reshape(3, patch_size, patch_size, 3)
+        #     # gt_clr_nerf2 = gt_clr_nerf2.permute(0, 3, 1, 2)
+        #     # from torchvision.utils import save_image
+        #     # save_image(gt_clr_nerf2, './patch_300.png')
+        #
+        # if True:
+        #     num_ray = 5000
+        #     ray_index = np.random.randint(0, img_size * img_size, num_ray)
+        #     sampled_points = points_cam_source[:, ray_index]
+        #     sampled_z_vals = z_vals[:, ray_index]
+        #     sampled_rays_d_world = rays_d_cam[:, ray_index]
+        #
+        #     gt_clr_nerf = gt_clr_nerf[:, ray_index]
+        #
+        #     # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
+        #     # sampled_rays_d = rays_d_cam_source[:, ray_index]
+        #
+        # if False:
+        #     num_ray = const.feature_res*const.feature_ress
+        #     sampled_points = points_cam_source
+        #     sampled_z_vals = z_vals
+        #     sampled_rays_d_world = rays_d_cam
+        #
+        # sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
+        #
+        # sampled_points = sampled_points.reshape(batch_size, -1, 3)
+        # sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+        #
+        # pixels_pred = self.get_nerf(sampled_points,
+        #                                          sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
+        #                                          num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
+        #
+        #
+        #
+        # losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
 
         if self.TrainGAN:
 
