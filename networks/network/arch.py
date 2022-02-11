@@ -652,18 +652,19 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 3 + 2 + 1 #+1
+        self.feature_field_ch = 64
+        self.feat_ch_out = 3 + 1 + self.feature_field_ch #+1
         self.feat_ch_occupancy = 128
         self.img_feat_ch = self.feat_ch_2D * 2
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3 + self.img_feat_ch, self.feat_ch_occupancy, self.feat_ch_out))
+        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
         # self.add_module('mlp2',
         #                 MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3, self.feat_ch_occupancy,
         #                          2))
-        self.attention = MultiHeadAttention(4, 256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.img_feat_ch, 4, 4)
+        self.attention = MultiHeadAttention(4, self.feature_field_ch, self.img_feat_ch, 4, 4)
         self.pe_k = PosEnSine(self.img_feat_ch // 2)
         self.img_feat_encoder = nn.Sequential(*[
             nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
@@ -676,6 +677,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             nn.GroupNorm(32, self.img_feat_ch),
             nn.ReLU(),
         ])
+        self.flow_estimator = FlowEstimator(self.img_feat_ch + self.feature_field_ch)
 
         #self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res)
         #self.NR = ResDecoder()
@@ -736,34 +738,34 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
             pt_tex_sigma = None
         else:
-            volume_feature = torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1).squeeze(-1).permute(0,2,1)
+            # volume_feature = torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1).squeeze(-1).permute(0,2,1)
             # key_value_feature = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
             #                        mode='bilinear', padding_mode='border')
-            img_feat = self.img_feat_encoder(img_feat)
-            key_feature = self.pe_k(img_feat)
-            key_feature = key_feature.reshape(batch_size, img_feat.size(1), img_feat.size(2)*img_feat.size(3)).permute(0,2,1)
-            value_feature = img_feat.reshape(batch_size, img_feat.size(1),
-                                                 img_feat.size(2) * img_feat.size(3)).permute(0, 2, 1)
+            # img_feat = self.img_feat_encoder(img_feat)
+            # key_feature = self.pe_k(img_feat)
+            # key_feature = key_feature.reshape(batch_size, img_feat.size(1), img_feat.size(2)*img_feat.size(3)).permute(0,2,1)
+            # value_feature = img_feat.reshape(batch_size, img_feat.size(1),
+            #                                      img_feat.size(2) * img_feat.size(3)).permute(0, 2, 1)
+            #
+            # output, attn = self.attention(volume_feature, key_feature, value_feature)
 
-            output, attn = self.attention(volume_feature, key_feature, value_feature)
 
-
-            pt_out = self.mlp(output.permute(0,2,1).unsqueeze(-1),  feat_occupancy)
+            pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
+            pt_feature_pred = pt_out[:, :, 3:-1]
             #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
             pt_tex_sigma = pt_out[:, :, -1:]
         ##
-        grid_2d_offset = pt_tex_coord + grid_2d
+        # grid_2d_offset = pt_tex_coord + grid_2d
 
 
-        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
-                                      mode='bilinear', padding_mode='border')
-        pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
+        # pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
+        #                               mode='bilinear', padding_mode='border')
+        # pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
 
-        return pt_tex_pred, pt_tex_sample, None, pt_feat_3D.squeeze(), pt_tex_sigma
+        return pt_tex_pred, pt_feature_pred, img_feat, pt_feat_3D.squeeze(), pt_tex_sigma
 
     def generate_2d_grids(self, res):
         x_coords = np.array(range(0, res), dtype=np.float32)
@@ -780,6 +782,18 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pts = np.float32(pts)
         pts = pts*2 -1
         return pts
+
+class FlowEstimator(nn.Module):
+    def __init__(self, in_ch):
+        super().__init__()
+        self.layer1 = nn.Linear(in_ch, 32)
+        self.layer2 = nn.Linear(32 + 2, 2)
+    def forward(self, feature, coord):
+        out = self.layer1(feature).relu()
+        out = self.layer2(torch.cat([out, coord], dim=-1)).tanh()
+        return out
+
+
 
 class TexPamirNetAttentionMultiview(BaseNetwork):
     def __init__(self):
