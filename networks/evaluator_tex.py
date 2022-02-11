@@ -173,11 +173,11 @@ class EvaluatorTex(object):
                 ##
                 with torch.no_grad():
                     nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
-
+                    sigma_from_occupancy = self.pamir_net.forward(img, vol, sampled_points, sampled_points_proj)[-1]
                 nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, sampled_points_global, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
 
-                all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+                all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma ], dim=-1)
                 pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray_part, num_steps, -1),
                                                       sampled_z_vals, device=self.device, white_back=True)
 

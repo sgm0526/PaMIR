@@ -103,7 +103,7 @@ class TrainingImgDataset(Dataset):
 
         img, mask = self.load_image(data_item, view_id)
         cam_R, cam_t = self.load_cams(data_item, view_id)
-        pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, view_id, point_num)
+        pts, pts_clr, all_pts, all_pts_clr, normal= self.load_points(data_item, view_id, point_num)
 
         if not self.training:
             pts = all_pts
@@ -158,6 +158,7 @@ class TrainingImgDataset(Dataset):
             'cam_r_target': torch.from_numpy(cam_R_target),
             'cam_t_target': torch.from_numpy(cam_t_target),
             'pts_world': torch.from_numpy(pts),
+            'pts_normal': torch.from_numpy(normal),
             'mask': torch.from_numpy(mask),
             'target_mask': torch.from_numpy(target_mask),
 
@@ -257,7 +258,7 @@ class TrainingImgDataset(Dataset):
 
         surface_points += surface_normal * np.random.randn(point_num, 1) * 0.01
 
-        return surface_points, surface_colors, all_points, all_points_clr
+        return surface_points, surface_colors, all_points, all_points_clr, surface_normal
 
     def load_smpl_parameters(self, data_item):
         dat_fpath = os.path.join(
