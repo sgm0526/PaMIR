@@ -237,13 +237,13 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-        pixels_pred = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
-                                                 sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
-                                                 num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
-
-
-
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
+        # pixels_pred = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
+        #                                          sampled_z_vals, sampled_rays_d_world, hierarchical, batch_size,
+        #                                          num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff)
+        #
+        #
+        #
+        # losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
 
         if self.TrainGAN:
 
