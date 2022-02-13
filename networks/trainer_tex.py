@@ -385,7 +385,8 @@ class Trainer(BaseTrainer):
         value_feature = img_feat_low.reshape(batch_size, img_feat_low.size(1),
                                              img_feat_low.size(2) * img_feat_low.size(3)).permute(0, 2, 1)
         output_feat, attn = self.pamir_tex_net.attention(feature_pred, key_feature, value_feature)
-        flow = self.pamir_tex_net.flow_estimator(output_feat, sampled_source_grid[None,].repeat(batch_size, 1, 1))
+        delta_flow = self.pamir_tex_net.flow_estimator(output_feat)
+        flow = sampled_source_grid + delta_flow
         pixels_warped = F.grid_sample(input=img, grid=flow.unsqueeze(2), align_corners=False,
                            mode='bilinear', padding_mode='border')
 

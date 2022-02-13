@@ -787,10 +787,10 @@ class FlowEstimator(nn.Module):
     def __init__(self, in_ch):
         super().__init__()
         self.layer1 = nn.Linear(in_ch, 32)
-        self.layer2 = nn.Linear(32 + 2, 2)
-    def forward(self, feature, coord):
+        self.layer2 = nn.Linear(32, 2)
+    def forward(self, feature):
         out = self.layer1(feature).relu()
-        out = self.layer2(torch.cat([out, coord], dim=-1)).tanh()
+        out = self.layer2(out).tanh()
         return out
 
 
