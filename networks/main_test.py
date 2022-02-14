@@ -102,19 +102,31 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         if not ('mesh_vert' in batch and 'mesh_face' in batch):
             raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
 
-        # for i in [0]:#,1,2,3]:
-        #     mesh_color = evaluater.test_tex_featurenerf(batch['img'], batch['mesh_vert'], batch['betas'],
-        #                                             batch['pose'], batch['scale'], batch['trans'], i)
-        #     img_dir = batch['img_dir'][0]
-        #     img_fname = os.path.split(img_dir)[1]
-        #     mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_one{i}.obj')
-        #     obj_io.save_obj_data({'v': batch['mesh_vert'][0].squeeze().detach().cpu().numpy(),
-        #                           'f': batch['mesh_face'][0].squeeze().detach().cpu().numpy(),
-        #                           'vc': mesh_color.squeeze()},
-        #                          mesh_fname)
-        #
-        #
-        # import pdb; pdb.set_trace()
+        mesh_v = batch['mesh_vert']
+        mesh_f = batch['mesh_face']
+        # mesh_fname = '/home/nas1_temp/dataset/Thuman/mesh_data/0000/0000.obj'
+        # mesh = obj_io.load_obj_data(mesh_fname)
+        # import numpy as np
+        # mesh_v = mesh['v'].astype(np.float32)
+        # mesh_f = mesh['f'].astype(np.int32)
+        # mesh_v = torch.from_numpy(mesh_v).unsqueeze(0).cuda()
+        # mesh_f = torch.from_numpy(mesh_f).unsqueeze(0).cuda()
+
+
+        mesh_color = evaluater.test_tex_featurenerf(batch['img'], mesh_v, batch['betas'],
+                                                    batch['pose'], batch['scale'], batch['trans'])
+        img_dir = batch['img_dir'][0]
+        #import pdb;
+        #pdb.set_trace()
+        img_fname = os.path.split(img_dir)[1]
+        mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + f'_tex_predimg_warpedclr.obj')
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
+
+
+        import pdb; pdb.set_trace()
 
 
         for i in range(0, 370, 10 ):
@@ -182,8 +194,8 @@ def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 
 if __name__ == '__main__':
     iternum=50
-    input_image_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data/'
-    output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_debug/'
+    input_image_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0000/'
+    output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0000_debug/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'

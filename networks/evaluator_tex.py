@@ -178,7 +178,7 @@ class EvaluatorTex(object):
         pts_clr_warped= pts_clr_warped.permute(0, 2, 1).reshape(batch_size, 3, img_size, img_size)
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
-            return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
+            return pts_clr_warped, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
         return pts_clr_pred, pts_clr_warped
 
@@ -243,7 +243,29 @@ class EvaluatorTex(object):
         obj_io.save_obj_data(mesh, './sigma_mesh.obj')
         return
 
-    def test_tex_featurenerf(self, img, mesh_v, betas, pose, scale, trans, qwe):
+    def test_tex_featurenerf(self, img, mesh_v, betas, pose, scale, trans):
+
+        if True:
+            check=1
+
+            # uvpos_fpath = os.path.join(
+            #     '/home/nas1_temp/dataset/Thuman/image_data/0000/meta/uv_pos.exr')
+            # uv_pos = cv.imread(uvpos_fpath, 2 | 4)[:, :, ::-1]
+            # uv_pos = uv_pos.reshape((-1, 3))
+            #
+            # uvmsk_fpath = os.path.join(
+            #     '/home/nas1_temp/dataset/Thuman/image_data/0000/meta/uv_mask.png')
+            # uv_mask = cv.imread(uvmsk_fpath)
+            # uv_mask = uv_mask[:, :, 0] != 0
+            # uv_mask = uv_mask.reshape((-1))
+            #
+            # surface_points = uv_pos[uv_mask]
+            # mesh_v= torch.from_numpy(surface_points).unsqueeze(0).to(self.device)
+
+
+
+
+
 
         self.pamir_net.eval()
         self.pamir_tex_net.eval()
@@ -263,9 +285,11 @@ class EvaluatorTex(object):
         depth_diff = []
         pred_img_list = []
         tex_sample_list = []
+        gt_depth_list = []
+
         for view_angle in [0, 90, 180, 270]:
 
-            pts_2 = self.rotate_points(pts, torch.ones(1).to(self.device) * view_angle * -1)
+            pts_2 = self.rotate_points(pts, torch.ones(1).to(self.device) * view_angle )
             pts_2_proj = self.forward_project_points(
                 pts_2, cam_r, cam_t, cam_f, img.size(2))
             # view_angle = 90
@@ -276,6 +300,28 @@ class EvaluatorTex(object):
             # 각각의 차이를 포인트마다의 list에 append하기
 
             pred_img, cam_loc =  self.test_nerf_target(img, betas, pose, scale, trans,torch.ones(1).to(self.device)*view_angle, return_cam_loc=True)
+            if False:
+
+                view_angle = str(view_angle).zfill(4)
+                img_fpath = f'/home/nas1_temp/dataset/Thuman/no_light_real/0000/color_re/{view_angle}.jpg'
+                msk_fpath = f'/home/nas1_temp/dataset/Thuman/no_light_real/0000/mask_re/{view_angle}.png'
+                img_ = cv.imread(img_fpath).astype(np.uint8)
+                img_ = np.float32(cv.cvtColor(img_, cv.COLOR_RGB2BGR)) / 255.
+                msk = cv.imread(msk_fpath).astype(np.uint8)
+                msk = np.float32(msk) / 255.
+                if len(msk.shape) == 2:
+                    msk = np.expand_dims(msk, axis=-1)
+                img_ = img_ * msk + (1 - msk)
+                pred_img = torch.from_numpy(img_.transpose((2, 0, 1))).unsqueeze(0)
+
+            else:
+                if view_angle == 0:
+                   pred_img = img
+                pred_img= pred_img.to(self.device)
+
+
+
+
             pred_img_list.append(pred_img)
 
             ray_d = pts - cam_loc
@@ -291,16 +337,17 @@ class EvaluatorTex(object):
             h_grid = pts_2_proj[:, :, 0].view(1, pts.size(1), 1, 1)
             v_grid = pts_2_proj[:, :, 1].view(1, pts.size(1), 1, 1)
             grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-            if view_angle == 0:
-                pred_img = img
-            tex_sample = F.grid_sample(input=pred_img.to(self.device), grid=grid_2d.to(self.device), align_corners=False,
-                                          mode='bilinear', padding_mode='border')
+
+            #import pdb; pdb.set_trace()
+            tex_sample = F.grid_sample(input=pred_img.to(self.device), grid=grid_2d.to(self.device), align_corners=False,mode='bilinear', padding_mode='border')
+            tex_sample_list.append(tex_sample)
 
             points = points.reshape(1, -1, const.num_steps, 3)
             points_proj = points_proj.reshape(1, -1, const.num_steps, 2)
 
 
-            gt_depth = pts_2[..., 2] + cam_tz
+            gt_depth =cam_tz - pts_2[..., 2]
+            gt_depth_list.append(gt_depth)
             # gt_depth = pts[..., 2] - cam_loc[..., 2] + cam_tz
             #points[..., 2] += cam_tz
             #points = points + cam_loc
@@ -329,21 +376,55 @@ class EvaluatorTex(object):
             _, nerf_depth, _= fancy_integration(points_sigma2.repeat(1, 1, 1, 2), z_vals, self.device, last_back=True)
             nerf_depth = nerf_depth[..., 0]
             depth_diff.append(nerf_depth - gt_depth)
+            import pdb; pdb.set_trace()
 
-            tex_sample_list.append(tex_sample)
 
         depth_diff = torch.cat(depth_diff, dim=0)
+        gt_depth = torch.cat(gt_depth_list, dim=0)
         pred_img = torch.cat(pred_img_list, dim=0)
         tex_sample = torch.cat(tex_sample_list, dim=0)
-        value, ind = abs(depth_diff).min(dim=0)
+        #import pdb; pdb.set_trace()
+        if False:
+            #depth_diff_ind_list = abs(depth_diff).sort(dim=0)[1]  # view_num, pts_num
+            #gt_depth_ind_list = abs(gt_depth).sort(dim=0)[1]  # view_num, pts_num
+            mask1 = (depth_diff < 0.05)
+
+            check = gt_depth * mask1 + 100 * torch.ones_like(gt_depth) * ~mask1
+            value , ind = check.min(dim=0)
+            tex_mask = (value < 100).unsqueeze(-1).cpu()
+
+
+            tex_sample_final = torch.gather(tex_sample, 0, ind[None, None, :, None].repeat(1, 3, 1, 1))
+            tex_sample_final = tex_sample_final[0, :, :, 0].permute(1, 0)  # num, 3(RGB)
+
+
+        else:
+            value, ind = abs(depth_diff).min(dim=0)
+            value2, ind = abs(gt_depth).min(dim=0)
+
+            tex_sample_final = torch.gather(tex_sample, 0, ind[None, None, :, None].repeat(1, 3, 1, 1))
+            tex_sample_final = tex_sample_final[0, :, :, 0].permute(1, 0)  # num, 3(RGB)
+            tex_mask = (value < 0.05).unsqueeze(-1).cpu()
+
+
         # import pdb; pdb.set_trace()
-        # value = depth_diff[qwe]
-        tex_sample_final = torch.gather(tex_sample, 0, ind[None,None, :, None].repeat(1, 3, 1, 1))
-        # tex_sample_final = torch.gather(tex_sample, 0, torch.ones_like(ind[None,None, :, None].repeat(1, 3, 1, 1)).cuda() * qwe)
-        tex_sample_final = tex_sample_final[0, :, :, 0].permute(1,0)
-        tex_mask = (value < 1).unsqueeze(-1).cpu()
-        tex_final = tex_sample_final.cpu() * tex_mask + torch.zeros_like(tex_sample_final).cpu() * ~tex_mask
-        #tex_final = tex_sample_final.cpu() * tex_mask + torch.Tensor(clr) * ~tex_mask
+        #tex_final = tex_sample_final.cpu() * tex_mask + torch.zeros_like(tex_sample_final).cpu() * ~tex_mask
+        tex_final = tex_sample_final.cpu() * tex_mask + torch.Tensor(clr) * ~tex_mask
+
+        #tex_final_list =[]
+        # for i in [0,1,2,3]:
+        #     value = depth_diff[i]
+        #     tex_sample_final = torch.gather(tex_sample, 0,
+        #                                     torch.ones(1,1,1,1).repeat(1, 3, 1, 1)).cuda() * i)
+        #     tex_sample_final = tex_sample_final[0, :, :, 0].permute(1, 0)
+        #     tex_mask = (value < 1).unsqueeze(-1).cpu()
+        #     tex_final = tex_sample_final.cpu() * tex_mask + torch.zeros_like(tex_sample_final).cpu() * ~tex_mask
+        #     # tex_final = tex_sample_final.cpu() * tex_mask + torch.Tensor(clr) * ~tex_mask
+        #     tex_final_list.append(tex_final)
+        #     return tex_final_list
+
+
+
 
         return tex_final
 
@@ -408,7 +489,7 @@ class EvaluatorTex(object):
 
     def forward_infer_color_value(self, img, vol, pts, pts_proj):
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        clr, _, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo, feat_occupancy=None) ##
+        _,clr, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo, feat_occupancy=None) ##
         return clr
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):
