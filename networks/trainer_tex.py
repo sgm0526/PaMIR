@@ -237,7 +237,7 @@ class Trainer(BaseTrainer):
 
         if True:
             # import pdb; pdb.set_trace()
-            ray_index = np.random.randint(0, pts_num, 1000)
+            ray_index = np.random.randint(0, pts_num, 500)
             pts_world =input_batch['pts_world'][:, ray_index]
 
             pts_target = self.rotate_points(pts_world, input_batch['target_view_id'])
@@ -267,7 +267,7 @@ class Trainer(BaseTrainer):
             sampled_rays_d_world = ray_d_target
 
             ###
-            ray_index = np.random.randint(0, img_size * img_size, 1000)
+            ray_index = np.random.randint(0, img_size * img_size, 500)
             sampled_points_random = points_cam_source[:, ray_index]
             #sampled_points_global_random = points_cam_global[:, ray_index]
             sampled_z_vals_random = z_vals[:, ray_index]
@@ -275,7 +275,7 @@ class Trainer(BaseTrainer):
             gt_clr_nerf_random = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
 
             ##
-            num_ray = num_ray + 1000
+            num_ray = num_ray + 500
             sampled_points = torch.cat([sampled_points, sampled_points_random], 1)
             #sampled_points_global = torch.cat([sampled_points_global, sampled_points_global_random], 1)
             sampled_z_vals = torch.cat([sampled_z_vals, sampled_z_vals_random], 1)

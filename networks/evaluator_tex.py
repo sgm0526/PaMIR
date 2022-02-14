@@ -142,7 +142,7 @@ class EvaluatorTex(object):
 
 
 
-        num_ray= 5000
+        num_ray= 1000
         pts_group_num = (img_size *img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
         pts_clr_warped = []

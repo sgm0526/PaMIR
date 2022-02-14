@@ -536,8 +536,81 @@ class TexPamirNetAttention(BaseNetwork):
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
+class ScaledDotProductAttention(nn.Module):
+    ''' Scaled Dot-Product Attention '''
 
-import constant as const
+    def __init__(self, temperature, attn_dropout=0.1):
+        super().__init__()
+        self.temperature = temperature
+        # self.dropout = nn.Dropout(attn_dropout)
+
+    def forward(self, q, k, v, mask=None):
+
+        attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
+
+        if mask is not None:
+            attn = attn.masked_fill(mask == 0, -1e9)
+            # attn = attn * mask
+
+        attn = F.softmax(attn, dim=-1)
+        # attn = self.dropout(F.softmax(attn, dim=-1))
+        output = torch.matmul(attn, v)
+
+        return output, attn
+
+
+class MultiHeadAttention(nn.Module):
+    ''' Multi-Head Attention module '''
+
+    def __init__(self, n_head, d_query, d_model, d_k, d_v, dropout=0.1):
+        super().__init__()
+
+        self.n_head = n_head
+        self.d_k = d_k
+        self.d_v = d_v
+
+        self.w_qs = nn.Linear(d_query, n_head * d_k, bias=False)
+        self.w_ks = nn.Linear(d_model, n_head * d_k, bias=False)
+        self.w_vs = nn.Linear(d_model, n_head * d_v, bias=False)
+        self.fc = nn.Linear(n_head * d_v, d_model, bias=False)
+
+        self.attention = ScaledDotProductAttention(temperature=d_k ** 0.5)
+
+        # self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(d_model + d_query, eps=1e-6)
+        #self.pe_k = PosEnSine(d_model//2)
+
+    def forward(self, q, k, v, mask=None):
+        #k = self.pe_k(k)
+        d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
+        sz_b, len_q, len_k, len_v = q.size(0), q.size(1), k.size(1), v.size(1)
+
+        residual = q
+        # Pass through the pre-attention projection: b x lq x (n*dv)
+        # Separate different heads: b x lq x n x dv
+        q = self.w_qs(q).view(sz_b, len_q, n_head, d_k)
+        k = self.w_ks(k).view(sz_b, len_k, n_head, d_k)
+        v = self.w_vs(v).view(sz_b, len_v, n_head, d_v)
+
+        # Transpose for attention dot product: b x n x lq x dv
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)   # For head axis broadcasting.
+
+        q, attn = self.attention(q, k, v, mask=mask)
+
+        # Transpose to move the head dimension back: b x lq x n x dv
+        # Combine the last two dimensions to concatenate all the heads together: b x lq x (n*dv)
+        q = q.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
+        # q = self.dropout(self.fc(q))
+        q = self.fc(q)
+        # q += residual
+        q = torch.cat([q, residual], dim=-1)
+
+        q = self.layer_norm(q)
+
+        return q, attn
 class TexPamirNetAttention_nerf(BaseNetwork):
     def __init__(self):
         super(TexPamirNetAttention_nerf, self).__init__()
@@ -548,15 +621,26 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
+        self.pe_ch =num_freq * 2 * 3 + 3
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
-        #self.add_module('mlp2',
-        #                MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3, self.feat_ch_occupancy,
-        #                         2))
 
-        #self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res)
-        #self.NR = ResDecoder()
+        self.img_feat_ch = 256 + self.feat_ch_2D
+        self.attention = MultiHeadAttention(4,  self.feat_ch_3D, self.img_feat_ch, 4, 4)
+        self.add_module('mlp',
+                        MLP_NeRF(self.feat_ch_3D +self.img_feat_ch +  self.pe_ch, self.feat_ch_occupancy,
+                                 self.feat_ch_out))
 
+        self.img_feat_encoder = nn.Sequential(*[
+            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+            nn.GroupNorm(32, self.img_feat_ch),
+            nn.ReLU(),
+            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+            #nn.GroupNorm(32, self.img_feat_ch),
+            #nn.ReLU(),
+            #nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+            #nn.GroupNorm(32, self.img_feat_ch),
+            #nn.ReLU(),
+        ])
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
         logging.info('#trainable params of 3d encoder = %d' %
@@ -598,14 +682,22 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                                    mode='bilinear', padding_mode='border')
         pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
 
-        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
+        pt_feat = pt_feat_3D #torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
 
         ##add coordinate
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
 
+        img_feat = self.img_feat_encoder(img_feat)
+        key_value_feature = img_feat.reshape(batch_size, img_feat.size(1), -1).permute(0, 2, 1)
+        output, attn = self.attention(pt_feat.squeeze(-1).permute(0,2,1), key_value_feature, key_value_feature)
+
+
+
         #import pdb; pdb.set_trace()
         if feat_occupancy is None:
-            pt_out = self.mlp.forward_color(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+            pt_out = self.mlp.forward_color(
+                torch.cat([output.permute(0, 2, 1).unsqueeze(-1), pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+            #pt_out = self.mlp.forward_color(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
@@ -613,7 +705,9 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_tex_att = pt_out[:, :, 3:4].sigmoid()
             pt_tex_sigma = None
         else:
-            pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
+            pt_out = self.mlp(torch.cat([output.permute(0, 2, 1).unsqueeze(-1), pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1), feat_occupancy)
+
+            #pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
@@ -628,9 +722,6 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
                                       mode='bilinear', padding_mode='border')
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
-
-
-
 
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
