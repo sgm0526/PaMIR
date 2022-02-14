@@ -194,7 +194,7 @@ class Trainer(BaseTrainer):
         # import pdb; pdb.set_trace
         losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
         #losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
-        #losses['att'] = self.attention_loss(output_att)
+        losses['att'] = self.attention_loss(output_att)
 
 
 

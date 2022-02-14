@@ -543,7 +543,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 3 + 1 #+1
+        self.feat_ch_out = 3 + 1 +1
         self.feat_ch_occupancy = 128
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
@@ -610,7 +610,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
             #pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
-            #pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
             pt_tex_sigma = None
         else:
             pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
@@ -618,22 +618,22 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
             #pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
-            #pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
             pt_tex_sigma = pt_out[:, :, -1:]
 
         ##
         #grid_2d_offset = pt_tex_coord + grid_2d
 
 
-        #pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
-        #                              mode='bilinear', padding_mode='border')
-        #pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
+        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
+                                      mode='bilinear', padding_mode='border')
+        pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
 
 
 
 
-        #pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
-        return pt_tex_pred, pt_tex_pred, None, pt_feat_3D.squeeze(), pt_tex_sigma
+        pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+        return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
 
     def generate_2d_grids(self, res):
         x_coords = np.array(range(0, res), dtype=np.float32)
