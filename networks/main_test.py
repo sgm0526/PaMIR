@@ -173,8 +173,9 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
         #     raise FileNotFoundError('Cannot found SMPL parameters! You need to run PaMIR-geometry first!')
         # if not ('mesh_vert' in batch and 'mesh_face' in batch):
         #     raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
-        import pdb;
-        pdb.set_trace()
+
+        if batch['target_view_id'][0] != 180:
+            continue
         nerf_color, nerf_color_wapred = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                          batch['pose'], batch['scale'], batch['trans'],batch["view_id"] - batch['target_view_id'], return_flow_feature=True)
         import pdb;

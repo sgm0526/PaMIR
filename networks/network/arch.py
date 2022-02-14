@@ -308,15 +308,17 @@ class PamirNet(BaseNetwork):
         logging.info('#trainable params of mlp = %d' %
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
-    def forward(self, img, vol, pts, pts_proj):
+    def forward(self, img, vol, pts, pts_proj, img_feats=None, vol_feats=None):
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
         """
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
-        img_feats = self.hg(img)
-        vol_feats = self.ve(vol)
+        if img_feats is None:
+            img_feats = self.hg(img)
+        if vol_feats is None:
+            vol_feats = self.ve(vol)
         img_feats = img_feats[-len(vol_feats):]
         pt_sdf_list = []
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
@@ -357,11 +359,13 @@ class PamirNet(BaseNetwork):
         else:
             return self.ve(vol, intermediate_output=False)
 
-    def get_mlp_feature(self, img, vol, pts, pts_proj ):
+    def get_mlp_feature(self, img, vol, pts, pts_proj, img_feats=None, vol_feats=None):
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
-        img_feats = self.hg(img)
-        vol_feats = self.ve(vol)
+        if img_feats is None:
+            img_feats = self.hg(img)
+        if vol_feats is None:
+            vol_feats = self.ve(vol)
         img_feats = img_feats[-len(vol_feats):]
         pt_sdf_list = []
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
@@ -688,7 +692,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
 
-    def forward(self, img, vol, pts, pts_proj, img_feat_geo, feat_occupancy, return_flow_feature=False):
+    def forward(self, img, vol, pts, pts_proj, img_feat_geo, feat_occupancy, img_feat_tex=None, vol_feat=None, return_flow_feature=False):
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
@@ -696,12 +700,12 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         """
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
-
-        _2d_grid = self.generate_2d_grids(img.shape[2])
-        _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
-                   [1, 0], :, :]
-        img_gridconcat = torch.cat([img, _2d_grid], 1)
-        img_feat_tex = self.cg(img_gridconcat)
+        if img_feat_tex is None:
+            _2d_grid = self.generate_2d_grids(img.shape[2])
+            _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
+                       [1, 0], :, :]
+            img_gridconcat = torch.cat([img, _2d_grid], 1)
+            img_feat_tex = self.cg(img_gridconcat)
         img_feat = torch.cat([img_feat_tex, img_feat_geo], dim=1)
 
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
@@ -713,7 +717,8 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         y_grid = pts[:, :, 1].view(batch_size, point_num, 1, 1, 1)
         z_grid = pts[:, :, 2].view(batch_size, point_num, 1, 1, 1)
         grid_3d = torch.cat([x_grid, y_grid, z_grid], dim=-1)
-        vol_feat = self.ve(vol, intermediate_output=False)
+        if vol_feat is None:
+            vol_feat = self.ve(vol, intermediate_output=False)
 
         pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
                                    mode='bilinear', padding_mode='border')

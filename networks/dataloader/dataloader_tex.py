@@ -351,8 +351,8 @@ class AllImgDataset(Dataset):
 
 
         model_id = item // (self.view_num_per_item * len(self.source_view_list))
-        view_id = (item % (self.view_num_per_item * len(self.source_view_list))) // len(self.source_view_list)
-        target_view_id = (item % (self.view_num_per_item * len(self.source_view_list))) % len(self.source_view_list)
+        view_id = self.source_view_list[(item % (self.view_num_per_item * len(self.source_view_list))) // self.view_num_per_item]
+        target_view_id = (item % (self.view_num_per_item * len(self.source_view_list))) % self.view_num_per_item
 
         data_item = data_list[model_id]
 

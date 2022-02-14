@@ -129,7 +129,7 @@ class EvaluatorTex(object):
         ## todo hierarchical sampling
 
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
-                                                               resolution=(const.img_res, const.img_res),
+                                                               resolution=(int(const.img_res / const.down_scale), int(const.img_res / const.down_scale)),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
@@ -143,11 +143,19 @@ class EvaluatorTex(object):
 
 
         num_ray= 5000
-        pts_group_num = (img_size *img_size + num_ray - 1) //num_ray
+        pts_group_num = (int(img_size / const.down_scale) * int(img_size / const.down_scale) + num_ray - 1) //num_ray
         pts_clr_pred = []
         pts_clr_warped = []
         pts_flow = []
         pts_volume_feature = []
+        img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+        img_feats = self.pamir_net.hg(img)
+        vol_feats = self.pamir_net.ve(vol)
+        _2d_grid = self.pamir_tex_net.generate_2d_grids(img.shape[2])
+        _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1,
+                                                                                   1).cuda()[:, [1, 0], :, :]
+        img_feat_tex = self.pamir_tex_net.cg(torch.cat([img, _2d_grid], 1))
+        vol_feat_tex = self.pamir_tex_net.ve(vol, intermediate_output=False)
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
             sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
@@ -165,12 +173,12 @@ class EvaluatorTex(object):
                     sampled_points = sampled_points.reshape(batch_size, -1, 3)  # 1 group_size*num_step, 3
                     sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-                    img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
                     flow, volume_feature = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
                                                                sampled_z_vals, sampled_rays_d_world, hierarchical,
                                                                batch_size,
-                                                               num_ray_part, num_steps, cam_f, cam_c, cam_tz, view_diff, return_flow_feature=True)
+                                                               num_ray_part, num_steps, cam_f, cam_c, cam_tz, view_diff,
+                                                        img_feats, vol_feats, img_feat_tex, vol_feat_tex, return_flow_feature=True)
                 pts_flow.append(flow.detach().cpu())
                 pts_volume_feature.append(volume_feature.detach().cpu())
 
@@ -179,12 +187,11 @@ class EvaluatorTex(object):
                     sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
                     sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-                    img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-
                     pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
                                                                sampled_z_vals, sampled_rays_d_world, hierarchical,
                                                                batch_size,
-                                                               num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff)
+                                                               num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff,
+                                                               img_feats, vol_feats, img_feat_tex, vol_feat_tex)
 
                 pts_clr_pred.append(pixels_pred.detach().cpu())
                 pts_clr_warped.append(pixels_warped.detach().cpu())
@@ -305,7 +312,7 @@ class EvaluatorTex(object):
             # 그걸로 fancy_integration해서 각각 nerf_depth 구하기
             # 각각의 차이를 포인트마다의 list에 append하기
 
-            pred_img, cam_loc =  self.test_nerf_target(img, betas, pose, scale, trans,torch.ones(1).to(self.device)*view_angle, return_cam_loc=True)
+            pred_img, cam_loc = self.test_nerf_target(img, betas, pose, scale, trans,torch.ones(1).to(self.device)*view_angle, return_cam_loc=True)
             pred_img_list.append(pred_img)
 
             ray_d = pts - cam_loc
@@ -501,10 +508,11 @@ class EvaluatorTex(object):
         return sampled_points_proj
 
     def get_nerf(self, img, vol, img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals,
-                 sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff, return_flow_feature=False):
+                 sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff,
+                 img_feats, vol_feats, img_feat_tex, vol_feat_tex, return_flow_feature=False):
 
         with torch.no_grad():
-            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj)
+            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj, img_feats=img_feats, vol_feats=vol_feats)
 
             ##for hierarchical sampling
             if hierarchical:
@@ -561,7 +569,7 @@ class EvaluatorTex(object):
 
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
-                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
+                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy, img_feat_tex=img_feat_tex, vol_feat=vol_feat_tex)
 
         all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
         pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
@@ -582,14 +590,13 @@ class EvaluatorTex(object):
             return flow, volume_feature
 
         if return_flow_feature:
-            _, depth, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                   sampled_z_vals, device=self.device, last_back=True)
-            surface = sampled_rays_d_world * depth
-            surface[..., 2] += cam_tz
-            surface_proj = self.project_points(surface, cam_f, cam_c, cam_tz)
-            surface_nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, surface, surface_proj)
-            flow, volume_feature, sigma = self.pamir_tex_net.forward(
-                img, vol, surface, surface_proj, img_feat_geo, surface_nerf_feat_occupancy, return_flow_feature=True)
+            nerf_flow, nerf_volume_feat, nerf_sigma = self.pamir_tex_net.forward(
+                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy, img_feat_tex=img_feat_tex, vol_feat=vol_feat_tex, return_flow_feature=True)
+            all_outputs = torch.cat([nerf_flow.squeeze(-2), nerf_volume_feat, nerf_sigma], dim=-1)
+            outputs, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                   sampled_z_vals, device=self.device)
+            flow = outputs[:, :, :2]
+            volume_feature = outputs[:, :, 2:]
             return flow, volume_feature
         # pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         # source_warped_img = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)
