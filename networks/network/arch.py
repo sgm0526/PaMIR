@@ -658,29 +658,34 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_3D = 32
         self.feat_ch_out = 3 + 2 + 1 #+1
         self.feat_ch_occupancy = 128
-        self.img_feat_ch = self.feat_ch_2D * 2
+
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3 + self.img_feat_ch, self.feat_ch_occupancy, self.feat_ch_out))
-        # self.add_module('mlp2',
-        #                 MLP_NeRF(256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3, self.feat_ch_occupancy,
-        #                          2))
-        self.attention = MultiHeadAttention(4, 256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.img_feat_ch, 4, 4)
-        self.pe_k = PosEnSine(self.img_feat_ch // 2)
-        self.img_feat_encoder = nn.Sequential(*[
-            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
-            nn.GroupNorm(32, self.img_feat_ch),
-            nn.ReLU(),
-            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
-            nn.GroupNorm(32, self.img_feat_ch),
-            nn.ReLU(),
-            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
-            nn.GroupNorm(32, self.img_feat_ch),
-            nn.ReLU(),
-        ])
 
+        self.train_attention = False
+        if self.train_attention:
+            self.img_feat_ch = self.feat_ch_2D * 2
+
+            self.attention = MultiHeadAttention(4, 256 + self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.img_feat_ch, 4, 4)
+            self.pe_k = PosEnSine(self.img_feat_ch // 2)
+            self.img_feat_encoder = nn.Sequential(*[
+                nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+                nn.GroupNorm(32, self.img_feat_ch),
+                nn.ReLU(),
+                nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+                nn.GroupNorm(32, self.img_feat_ch),
+                nn.ReLU(),
+                nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+                nn.GroupNorm(32, self.img_feat_ch),
+                nn.ReLU(),
+            ])
+            mlp_input_ch = 256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3 + self.img_feat_ch
+        else:
+            mlp_input_ch =  256 + self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3
+
+        self.add_module('mlp', MLP_NeRF(mlp_input_ch,self.feat_ch_occupancy, self.feat_ch_out))
         #self.NR = NeuralRenderer(out_dim=3, img_size=const.img_res, feature_size=const.feature_res)
         #self.NR = ResDecoder()
 
@@ -742,18 +747,21 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_tex_sigma = None
         else:
             volume_feature = torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1).squeeze(-1).permute(0,2,1)
-            # key_value_feature = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
-            #                        mode='bilinear', padding_mode='border')
-            img_feat = self.img_feat_encoder(img_feat)
-            key_feature = self.pe_k(img_feat)
-            key_feature = key_feature.reshape(batch_size, img_feat.size(1), img_feat.size(2)*img_feat.size(3)).permute(0,2,1)
-            value_feature = img_feat.reshape(batch_size, img_feat.size(1),
-                                                 img_feat.size(2) * img_feat.size(3)).permute(0, 2, 1)
+            if self.train_attention:
+                #key_value_feature = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
+                #                       mode='bilinear', padding_mode='border')
+                img_feat = self.img_feat_encoder(img_feat)
+                key_feature = self.pe_k(img_feat)
+                key_feature = key_feature.reshape(batch_size, img_feat.size(1), img_feat.size(2)*img_feat.size(3)).permute(0,2,1)
+                value_feature = img_feat.reshape(batch_size, img_feat.size(1),
+                                                    img_feat.size(2) * img_feat.size(3)).permute(0, 2, 1)
 
-            output, attn = self.attention(volume_feature, key_feature, value_feature)
+                output, attn = self.attention(volume_feature, key_feature, value_feature)
+                pt_out = self.mlp(output.permute(0,2,1).unsqueeze(-1),  feat_occupancy)
+            else:
 
+                pt_out = self.mlp(volume_feature.permute(0,2,1).unsqueeze(-1), feat_occupancy)
 
-            pt_out = self.mlp(output.permute(0,2,1).unsqueeze(-1),  feat_occupancy)
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
@@ -763,13 +771,13 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         ##
         grid_2d_offset = pt_tex_coord + grid_2d
 
-
-        pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
-                                      mode='bilinear', padding_mode='border')
-        pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
+        #pt_tex_sample = F.grid_sample(input=img, grid=grid_2d_offset, align_corners=False,
+        #                              mode='bilinear', padding_mode='border')
+        #pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         if return_flow_feature:
-            return grid_2d_offset, volume_feature, pt_tex_sigma
-        return pt_tex_pred, pt_tex_sample, None, pt_feat_3D.squeeze(), pt_tex_sigma
+            return  grid_2d_offset.squeeze(-2) , volume_feature, None, pt_feat_3D.squeeze(), pt_tex_sigma
+
+        return pt_tex_pred, grid_2d_offset.squeeze(-2) , None, pt_feat_3D.squeeze(), pt_tex_sigma
 
     def generate_2d_grids(self, res):
         x_coords = np.array(range(0, res), dtype=np.float32)

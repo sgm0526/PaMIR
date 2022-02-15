@@ -77,7 +77,7 @@ class BaseTrainer(object):
                                                      pin_memory=self.options.pin_memory,
                                                      shuffle=self.options.shuffle_train,
                                                      worker_init_fn=worker_init_fn)
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
             val_data_loader = DataLoader(self.val_ds,batch_size=1, shuffle=False, num_workers=self.options.num_workers,
                 worker_init_fn=worker_init_fn, drop_last=False)
 
@@ -102,7 +102,7 @@ class BaseTrainer(object):
                         # self.summary_writer.add_images('nerf_img', pixels_high, self.step_count)
                         # self.summary_writer.add_images('down_nerf_img', pred_img, self.step_count)
 
-                    if True : #self.step_count % (50*self.options.summary_steps) == 0:
+                    if self.step_count % (50*self.options.summary_steps) == 0:
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
                         evaluater.pamir_net = self.pamir_net
                         evaluater.pamir_tex_net = self.pamir_tex_net

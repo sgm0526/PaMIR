@@ -161,7 +161,7 @@ class Trainer(BaseTrainer):
 
         ## todo hierarchical sampling
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
-
+        gt_clr_nerf_mask = target_mask.reshape(batch_size, -1, 3)
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
                                                                resolution=(const.img_res, const.img_res),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
@@ -193,8 +193,8 @@ class Trainer(BaseTrainer):
 
         # import pdb; pdb.set_trace
         # losses['tex'] = (self.tex_loss(output_clr[...,:3], gt_clr)+self.tex_loss(output_clr[...,3:], gt_clr) + self.tex_loss(output_clr_, gt_clr))*2/3
-        losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
-        #losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
+        #losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
+        losses['tex'] =  2*self.tex_loss(output_clr_, gt_clr)
         #losses['att'] = self.attention_loss(output_att)
 
 
@@ -226,6 +226,7 @@ class Trainer(BaseTrainer):
             sampled_rays_d_world = rays_d_cam[:, ray_index]
 
             gt_clr_nerf = gt_clr_nerf[:, ray_index]
+            gt_clr_nerf_mask = gt_clr_nerf_mask[:, ray_index]
 
             # rays_d_cam_source = self.rotate_points(rays_d_cam, view_diff)
             # sampled_rays_d = rays_d_cam_source[:, ray_index]
@@ -249,13 +250,12 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         #losses['nerf_tex_final'] =self.tex_loss( pixels_warped , gt_clr_nerf)
-        losses['nerf_tex_final'] = self.tex_loss(pixels_warped[...,:3], gt_clr_nerf)
+
+        losses['nerf_tex_final'] = self.tex_loss(pixels_warped, gt_clr_nerf, att = gt_clr_nerf_mask[...,0:1])
 
 
         if self.TrainGAN:
-
             ## GAN loss
-
             fake_score = self.pamir_tex_discriminator(pixels_high)
             losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
 
@@ -355,46 +355,25 @@ class Trainer(BaseTrainer):
                 img, vol, all_points.reshape(batch_size, num_ray * num_steps * 2, 3),
                 all_points_proj.reshape(batch_size, num_ray * num_steps * 2, 2), img_feat_geo,
                 all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray * num_steps * 2, 1))
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
-                                                  all_z_vals, device=self.device, white_back=True)
-
-            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
-                                                   all_z_vals, device=self.device, white_back=True)
+            num_steps = num_steps * 2
+            sampled_z_vals = all_z_vals
 
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
 
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                  sampled_z_vals, device=self.device, white_back=True)
+        all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+        pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                              sampled_z_vals, device=self.device, white_back=True)
 
-            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                   sampled_z_vals, device=self.device, white_back=True)
+        all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+        feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                               sampled_z_vals, device=self.device)#, white_back=True)
 
         #pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         #source_warped_img = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)
 
-        if True:
-            nerf_flow, nerf_volume_feat, nerf_sigma = self.pamir_tex_net.forward(
-                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy,
-                return_flow_feature=True)
-
-            all_outputs = torch.cat([nerf_flow.squeeze(-2), nerf_volume_feat, nerf_sigma], dim=-1)
-            import pdb; pdb.set_trace()
-
-        if return_flow_feature:
-            nerf_flow, nerf_volume_feat, nerf_sigma = self.pamir_tex_net.forward(
-                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy, return_flow_feature=True)
-            all_outputs = torch.cat([nerf_flow.squeeze(-2), nerf_volume_feat, nerf_sigma], dim=-1)
-            outputs, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                              sampled_z_vals, device=self.device)
-            flow = outputs[:, :, :2]
-            volume_feature = outputs[:, :, 2:]
-            return flow, volume_feature
+        feature_pred = F.grid_sample(img, feature_pred.unsqueeze(2)).squeeze(-1).permute(0, 2, 1)
 
 
         return pixels_pred, feature_pred
