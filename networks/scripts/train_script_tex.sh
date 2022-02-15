@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=2
+GPU_ID=4
 NAME='./attention_ablation/nerf_flowvr_0215_maskloss_'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
