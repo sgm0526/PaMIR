@@ -378,6 +378,23 @@ class Trainer(BaseTrainer):
         #pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         #source_warped_img = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)
 
+        if True:
+            nerf_flow, nerf_volume_feat, nerf_sigma = self.pamir_tex_net.forward(
+                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy,
+                return_flow_feature=True)
+
+            all_outputs = torch.cat([nerf_flow.squeeze(-2), nerf_volume_feat, nerf_sigma], dim=-1)
+            import pdb; pdb.set_trace()
+
+        if return_flow_feature:
+            nerf_flow, nerf_volume_feat, nerf_sigma = self.pamir_tex_net.forward(
+                img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy, return_flow_feature=True)
+            all_outputs = torch.cat([nerf_flow.squeeze(-2), nerf_volume_feat, nerf_sigma], dim=-1)
+            outputs, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                              sampled_z_vals, device=self.device)
+            flow = outputs[:, :, :2]
+            volume_feature = outputs[:, :, 2:]
+            return flow, volume_feature
 
 
         return pixels_pred, feature_pred

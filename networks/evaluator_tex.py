@@ -149,8 +149,8 @@ class EvaluatorTex(object):
         pts_flow = []
         pts_volume_feature = []
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        img_feats = self.pamir_net.hg(img)
-        vol_feats = self.pamir_net.ve(vol)
+        vol_feat_geo = self.pamir_net.get_vol_feature(vol, no_grad=True)
+
         _2d_grid = self.pamir_tex_net.generate_2d_grids(img.shape[2])
         _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1,
                                                                                    1).cuda()[:, [1, 0], :, :]
@@ -166,36 +166,31 @@ class EvaluatorTex(object):
             num_ray_part = sampled_points.size(1)
             #num_ray -> num_ray_part
 
-        ##
+            with torch.no_grad():
+                sampled_points = sampled_points.reshape(batch_size, -1, 3)  # 1 group_size*num_step, 3
+                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-            if return_flow_feature:
-                with torch.no_grad():
-                    sampled_points = sampled_points.reshape(batch_size, -1, 3)  # 1 group_size*num_step, 3
-                    sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-
-
+                if return_flow_feature:
                     flow, volume_feature = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
+                                                         sampled_z_vals, sampled_rays_d_world, hierarchical,
+                                                         batch_size,
+                                                         num_ray_part, num_steps, cam_f, cam_c, cam_tz, view_diff,
+                                                         vol_feat_geo, img_feat_tex, vol_feat_tex,
+                                                         return_flow_feature=True)
+                    pts_flow.append(flow.detach().cpu())
+                    pts_volume_feature.append(volume_feature.detach().cpu())
+                else:
+                    pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points,
+                                                               sampled_points_proj,
                                                                sampled_z_vals, sampled_rays_d_world, hierarchical,
                                                                batch_size,
                                                                num_ray_part, num_steps, cam_f, cam_c, cam_tz, view_diff,
-                                                        img_feats, vol_feats, img_feat_tex, vol_feat_tex, return_flow_feature=True)
-                pts_flow.append(flow.detach().cpu())
-                pts_volume_feature.append(volume_feature.detach().cpu())
+                                                               vol_feat_geo, img_feat_tex, vol_feat_tex)
 
-            else:
-                with torch.no_grad():
-                    sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
-                    sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+                    pts_clr_pred.append(pixels_pred.detach().cpu())
+                    pts_clr_warped.append(pixels_warped.detach().cpu())
 
-                    pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
-                                                               sampled_z_vals, sampled_rays_d_world, hierarchical,
-                                                               batch_size,
-                                                               num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff,
-                                                               img_feats, vol_feats, img_feat_tex, vol_feat_tex)
 
-                pts_clr_pred.append(pixels_pred.detach().cpu())
-                pts_clr_warped.append(pixels_warped.detach().cpu())
-        ##
 
         if return_flow_feature:
             import pdb;pdb.set_trace()
@@ -509,10 +504,10 @@ class EvaluatorTex(object):
 
     def get_nerf(self, img, vol, img_feat_geo, sampled_points, sampled_points_proj, sampled_z_vals,
                  sampled_rays_d_world, hierarchical, batch_size, num_ray, num_steps, cam_f, cam_c, cam_tz, view_diff,
-                 img_feats, vol_feats, img_feat_tex, vol_feat_tex, return_flow_feature=False):
+                 vol_feat_geo=None, img_feat_tex=None, vol_feat_tex=None, return_flow_feature=False):
 
         with torch.no_grad():
-            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj, img_feats=img_feats, vol_feats=vol_feats)
+            nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points, sampled_points_proj, img_feats=img_feat_geo, vol_feats=vol_feat_geo)
 
             ##for hierarchical sampling
             if hierarchical:
@@ -565,19 +560,25 @@ class EvaluatorTex(object):
                 all_nerf_feat_occupancy.reshape(batch_size, ch_mlp_feat, num_ray * num_steps * 2, 1))
             # all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             num_steps = num_steps * 2
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
+                                                  all_z_vals, device=self.device, white_back=True)
 
+            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps * 2, -1),
+                                                   all_z_vals, device=self.device, white_back=True)
 
         else:
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy, img_feat_tex=img_feat_tex, vol_feat=vol_feat_tex)
 
-        all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-        pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                              sampled_z_vals, device=self.device, white_back=True)
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                  sampled_z_vals, device=self.device, white_back=True)
 
-        all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-        feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                               sampled_z_vals, device=self.device, white_back=True)
+            all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+            feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                   sampled_z_vals, device=self.device, white_back=True)
         if False:
             _, depth, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                    sampled_z_vals, device=self.device, last_back=True)
