@@ -656,7 +656,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 3 + 2 + 1 #+1
+        self.feat_ch_out = 3 + 2 +128+ 1 #+1
         self.feat_ch_occupancy = 128
 
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
@@ -743,6 +743,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
             pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
+            pt_tex_feature = pt_out[:, :, 5:-1]
             #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
             pt_tex_sigma = None
         else:
@@ -766,6 +767,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
             pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
+            pt_tex_feature = pt_out[:, :, 5:-1]
             #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
             pt_tex_sigma = pt_out[:, :, -1:]
         ##
@@ -777,7 +779,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         if return_flow_feature:
             return  grid_2d_offset.squeeze(-2) , volume_feature, None, pt_feat_3D.squeeze(), pt_tex_sigma
 
-        return pt_tex_pred, grid_2d_offset.squeeze(-2) , None, pt_feat_3D.squeeze(), pt_tex_sigma
+        return pt_tex_pred, grid_2d_offset.squeeze(-2) , pt_tex_feature, pt_feat_3D.squeeze(), pt_tex_sigma
 
     def generate_2d_grids(self, res):
         x_coords = np.array(range(0, res), dtype=np.float32)
@@ -988,7 +990,7 @@ class NeuralRenderer(nn.Module):
             ])
         self.actvn = nn.LeakyReLU(0.2, inplace=True)
 
-    def forward(self, x):
+    def forward(self, x, large_rgb):
 
         net = self.conv_in(x)
 
@@ -1090,7 +1092,7 @@ class ResDecoder(nn.Module):
     def __init__(self,):
         super().__init__()
         blocks = []
-        nf = 128
+        nf = 128 #+3
         self.nlayers = 4
         for i in range(self.nlayers):
             nf0 = nf // (2 ** i)
@@ -1105,9 +1107,10 @@ class ResDecoder(nn.Module):
         ]
 
         self.resnet = nn.Sequential(*blocks)
-        self.conv_img = nn.Conv2d(nf // (2 ** self.nlayers), 3, 3, padding=1)
+        self.conv_img = nn.Conv2d(nf // (2 ** self.nlayers) , 3, 3, padding=1)
+        self.conv_img_final = nn.Conv2d(3, 3, 3, padding=1)
 
-    def forward(self, x):
+    def forward(self, x, large_rgb ):
 
         pixels = x
 
@@ -1115,7 +1118,13 @@ class ResDecoder(nn.Module):
             pixels = block(pixels)
 
             # pixels = self.resnet(pixels)
+
         pixels = self.conv_img(F.leaky_relu(pixels, 2e-1))
+        #pixels = self.conv_img(F.leaky_relu(torch.cat([pixels, large_rgb], 1), 2e-1))
+        if False:
+            pixels = pixels + large_rgb
+            pixels = self.conv_img_final(pixels)
+
         pixels = torch.sigmoid(pixels)
 
         return pixels
