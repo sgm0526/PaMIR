@@ -1121,7 +1121,7 @@ class ResDecoder(nn.Module):
 
         pixels = self.conv_img(F.leaky_relu(pixels, 2e-1))
         #pixels = self.conv_img(F.leaky_relu(torch.cat([pixels, large_rgb], 1), 2e-1))
-        if False:
+        if True:
             pixels = pixels + large_rgb
             pixels = self.conv_img_final(pixels)
 

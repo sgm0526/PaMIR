@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=1
-NAME='./attention_ablation/nerf_flowvr_0215_maskloss_nr_noconcat_downloss_nowarpedsource'
+GPU_ID=7
+NAME='./attention_ablation/nerf_flowvr_0215_maskloss_nr_noconcat_downloss_gan'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'

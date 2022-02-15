@@ -92,7 +92,7 @@ class Trainer(BaseTrainer):
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = False
+        self.TrainGAN = True
 
         if self.TrainGAN:
             ## add for discriminator
@@ -297,9 +297,9 @@ class Trainer(BaseTrainer):
 
         if self.TrainGAN:
 
-            fake_score_d = self.pamir_tex_discriminator(pixels_pred.detach())
+            fake_score_d = self.pamir_tex_discriminator(pixels_pred.detach().clone())
             real_d_input =target_img
-            real_d_input .requires_grad = True
+            real_d_input.requires_grad = True
             real_score_d = self.pamir_tex_discriminator(real_d_input )
             total_loss_d = 0.
             losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
