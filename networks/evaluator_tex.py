@@ -53,7 +53,7 @@ class EvaluatorTex(object):
                                          smooth_kernel_size=const.smooth_kernel_size,
                                          batch_size=1).to(self.device)
         # pamir_net
-        self.pamir_net = PamirNet().to(self.device)
+        #self.pamir_net = PamirNet().to(self.device)
         self.pamir_tex_net = TexPamirNetAttention_nerf().to(self.device)
 
         self.decoder_output_size = 128
@@ -63,7 +63,7 @@ class EvaluatorTex(object):
         if not no_weight:
             self.load_pretrained_pamir_net(pretrained_checkpoint_pamir)
             self.load_pretrained(checkpoint_file=pretrained_checkpoint_pamir_tex)
-        self.pamir_net.eval()
+        #self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
     def load_pretrained(self, checkpoint_file=None):
@@ -162,12 +162,18 @@ class EvaluatorTex(object):
                 sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
                 sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-                img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+                # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
-                pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points, sampled_points_proj,
-                                                           sampled_z_vals, sampled_rays_d_world, hierarchical,
-                                                           batch_size,
-                                                           num_ray_part , num_steps, cam_f, cam_c, cam_tz, view_diff)
+                nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+                    img, vol, sampled_points, sampled_points_proj)  # , img_feat_geo, nerf_feat_occupancy)
+
+                all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+                pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(batch_size, num_ray_part, num_steps, -1),
+                                                       sampled_z_vals, device=self.device, white_back=True)
+
+                all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+                pixels_warped, _, _ = fancy_integration2(all_outputs.reshape(batch_size, num_ray_part, num_steps, -1),
+                                                        sampled_z_vals, device=self.device, white_back=True)
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
             pts_clr_warped.append(pixels_warped.detach().cpu())

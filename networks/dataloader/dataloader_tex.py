@@ -105,6 +105,14 @@ class TrainingImgDataset(Dataset):
         cam_R, cam_t = self.load_cams(data_item, view_id)
         pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, view_id, point_num)
 
+        ##
+        pts_ids, pts_occ, pts_ov = self.load_points_occ(data_item, point_num)
+        pts2smpl_idx, pts2smpl_wgt = self.load_sample2smpl_data(data_item, pts_ids)
+        pts_occ_r = self.rotate_points(pts_occ, view_id)
+        pts_occ_proj = self.project_points(pts_occ, cam_R, cam_t, cam_f)
+
+        ##
+
         if not self.training:
             pts = all_pts
             pts_clr = all_pts_clr
@@ -123,7 +131,6 @@ class TrainingImgDataset(Dataset):
             raise NotImplementedError()
 
         target_img , target_mask = self.load_image(data_item, target_view_id)
-
 
         ###
 
@@ -144,6 +151,9 @@ class TrainingImgDataset(Dataset):
             'pts': torch.from_numpy(pts_r),
             'pts_proj': torch.from_numpy(pts_proj),
             'pts_clr': torch.from_numpy(pts_clr),
+            'pts_occ': torch.from_numpy(pts_occ_r),
+            'pts_occ_proj': torch.from_numpy(pts_occ_proj),
+            'pts_ov': torch.from_numpy(pts_ov),
             # 'pts_clr': torch.from_numpy(pts_clr),
             # 'pts_clr_msk': torch.from_numpy(pts_clr_msk),
             'betas': torch.from_numpy(betas),
@@ -255,6 +265,59 @@ class TrainingImgDataset(Dataset):
         surface_points += surface_normal * np.random.randn(point_num, 1) * 0.01
 
         return surface_points, surface_colors, all_points, all_points_clr
+
+    def load_points_occ(self, data_item, point_num):
+        dat_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'sample/samples.mat')
+        try:
+            pts_data = sio.loadmat(dat_fpath, verify_compressed_data_integrity=False)
+        except ValueError as e:
+            print('Value error occurred when loading ' + dat_fpath)
+            raise ValueError(str(e))
+
+        pts_adp_idp = np.int32(np.random.rand(point_num//2) * len(pts_data['surface_points_inside']))
+        pts_adp_idn = np.int32(np.random.rand(point_num//2) * len(pts_data['surface_points_outside']))
+        pts_uni_idp = np.int32(np.random.rand(point_num//32) * len(pts_data['uniform_points_inside']))
+        pts_uni_idn = np.int32(np.random.rand(point_num//32) * len(pts_data['uniform_points_outside']))
+
+        pts_adp_p = pts_data['surface_points_inside'][pts_adp_idp]
+        pts_adp_n = pts_data['surface_points_outside'][pts_adp_idn]
+        pts_uni_p = pts_data['uniform_points_inside'][pts_uni_idp]
+        pts_uni_n = pts_data['uniform_points_outside'][pts_uni_idn]
+
+        pts = np.concatenate([pts_adp_p, pts_adp_n, pts_uni_p, pts_uni_n], axis=0)
+        pts_ov = np.concatenate([
+            np.ones([len(pts_adp_p), 1]), np.zeros([len(pts_adp_n), 1]),
+            np.ones([len(pts_uni_p), 1]), np.zeros([len(pts_uni_n), 1]),
+        ], axis=0)
+
+        pts = pts.astype(np.float32)
+        pts_ov = pts_ov.astype(np.float32)
+
+        return (pts_adp_idp, pts_adp_idn, pts_uni_idp, pts_uni_idn), pts, pts_ov
+    def load_sample2smpl_data(self, data_item, pts_ids):
+        dat_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'sample/sample2smpl.mat')
+        try:
+            data = sio.loadmat(dat_fpath, verify_compressed_data_integrity=False)
+        except ValueError as e:
+            print('Value error occurred when loading ' + dat_fpath)
+            raise ValueError(str(e))
+
+        idx0 = data['idx_surface_points_inside'][pts_ids[0]]
+        idx1 = data['idx_surface_points_outside'][pts_ids[1]]
+        idx2 = data['idx_uniform_points_inside'][pts_ids[2]]
+        idx3 = data['idx_uniform_points_outside'][pts_ids[3]]
+        idx = np.concatenate([idx0, idx1, idx2, idx3], axis=0).astype(np.long)
+        dst0 = data['dist_surface_points_inside'][pts_ids[0]]
+        dst1 = data['dist_surface_points_outside'][pts_ids[1]]
+        dst2 = data['dist_uniform_points_inside'][pts_ids[2]]
+        dst3 = data['dist_uniform_points_outside'][pts_ids[3]]
+        dst = np.concatenate([dst0, dst1, dst2, dst3], axis=0).astype(np.float32)
+        min_dst = np.min(dst, axis=1, keepdims=True)
+        wgt = np.exp(-dst*dst / (2*min_dst*min_dst))
+        wgt = wgt / np.sum(wgt, axis=1, keepdims=True)
+        return idx, wgt
 
     def load_smpl_parameters(self, data_item):
         dat_fpath = os.path.join(
