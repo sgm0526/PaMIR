@@ -19,7 +19,7 @@ import math
 
 from util.base_trainer import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
-from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf, NeuralRenderer, ResDecoder
+from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf, NeuralRenderer, ResDecoder,  NeuralRenderer_flow
 from network.discriminator import ProgressiveDiscriminator
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from neural_voxelization_layer.voxelize import Voxelization
@@ -77,6 +77,10 @@ class Trainer(BaseTrainer):
 
         #self.NR = NeuralRenderer_coord().to(self.device)
         self.NR = ResDecoder().to(self.device)
+        self.NR_flow = NeuralRenderer_flow(input_dim=2, out_dim=16*16*9).to(self.device)
+        #self.NR_flow = NeuralRenderer(input_dim=2, out_dim=2, img_size=512,
+        #                              feature_size=const.feature_res).to(self.device)
+
         #self.NR = NeuralRenderer(input_dim=128 + 3, out_dim=3, img_size=512,
         #                         feature_size=const.feature_res).to(self.device)
 
@@ -92,7 +96,7 @@ class Trainer(BaseTrainer):
         # loses
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = True
+        self.TrainGAN = False
 
         if self.TrainGAN:
             ## add for discriminator
@@ -151,8 +155,8 @@ class Trainer(BaseTrainer):
 
         target_img = input_batch['target_img']
 
-        mask = input_batch['mask']
-        target_mask = input_batch['target_mask']
+        mask = input_batch['mask'].permute(0, 3, 1, 2)[:, 0:1]
+        target_mask = input_batch['target_mask'].permute(0, 3, 1, 2)[:, 0:1]
 
         ###
         batch_size = pts.size(0)
@@ -167,7 +171,7 @@ class Trainer(BaseTrainer):
 
         ## todo hierarchical sampling
         gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
-        gt_clr_nerf_mask = target_mask.reshape(batch_size, -1, 3)
+        gt_clr_nerf_mask =  input_batch['target_mask'].reshape(batch_size, -1, 3)
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
                                                                resolution=(const.feature_res, const.feature_res),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
@@ -208,7 +212,7 @@ class Trainer(BaseTrainer):
         if False:
             patch_size = 32
             num_ray = patch_size * patch_size
-            ray_index = self.sample_ray_index(img_size, target_mask, patch_size=patch_size)
+            ray_index = self.sample_ray_index(img_size, input_batch['target_mask'], patch_size=patch_size)
 
             sampled_points = torch.gather(points_cam_source, 1,
                                           ray_index[:, :, None, None].repeat(1, 1, num_steps, 3))
@@ -267,15 +271,15 @@ class Trainer(BaseTrainer):
 
 
 
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, target_img, att = target_mask.permute(0,3,1,2)[:,0:1])
+        losses['nerf_tex'] = self.tex_loss(pixels_pred, target_img, att = target_mask)
         #losses['nerf_tex_final'] =self.tex_loss( pixels_warped , gt_clr_nerf)
 
-        losses['nerf_tex_final'] = self.tex_loss(pixels_warped,target_img, att = target_mask.permute(0,3,1,2)[:,0:1])
+        losses['nerf_tex_final'] = self.tex_loss(pixels_warped,target_img, att = target_mask)
 
 
         if self.TrainGAN:
             ## GAN loss
-            fake_score = self.pamir_tex_discriminator(pixels_pred)
+            fake_score = self.pamir_tex_discriminator(pixels_pred*target_mask)
             losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
 
 
@@ -297,10 +301,10 @@ class Trainer(BaseTrainer):
 
         if self.TrainGAN:
 
-            fake_score_d = self.pamir_tex_discriminator(pixels_pred.detach().clone())
+            fake_score_d = self.pamir_tex_discriminator(pixels_pred.detach().clone()*target_mask)
             real_d_input =target_img
             real_d_input.requires_grad = True
-            real_score_d = self.pamir_tex_discriminator(real_d_input )
+            real_score_d = self.pamir_tex_discriminator(real_d_input*target_mask )
             total_loss_d = 0.
             losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
             if True:  # add R1 regularization
@@ -406,10 +410,31 @@ class Trainer(BaseTrainer):
         feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1), sampled_z_vals,
                                                device=self.device)  # , white_back=True)
 
-        low_flow_map = flow_pred.permute(0,2,1).reshape(batch_size, 2, const.feature_res, const.feature_res)
-        large_flow_map = F.interpolate(low_flow_map, [const.img_res, const.img_res], mode='bilinear')
+        low_flow_map  = flow_pred.permute(0,2,1).reshape(batch_size, -1, const.feature_res, const.feature_res)
+
+        if False:
+            large_flow_map = self.NR_flow(low_flow_map)
+        if False:
+            scale = 16
+            # import pdb; pdb.set_trace()
+            up_mask = self.NR_flow(low_flow_map)  # b, 9*16*16, 32, 32
+
+            up_mask = up_mask.view(batch_size, 1, 9, scale, scale, const.feature_res, const.feature_res)
+            up_mask = torch.softmax(up_mask, dim=2)
+
+            up_flow_map = F.unfold(low_flow_map, [3, 3], padding=1)  # 3 , 2*9 , 32*32
+            up_flow_map = up_flow_map.view(batch_size, 2, 9, 1, 1, const.feature_res,
+                                           const.feature_res)  # batch, 2, 9, 1, 1, 32,32
+            up_flow_map = torch.sum(up_mask * up_flow_map, dim=2)  # batch, 2, 16, 16, 32,32
+            up_flow_map = up_flow_map.permute(0, 1, 4, 2, 5, 3)
+            large_flow_map = up_flow_map.reshape(batch_size, 2, const.img_res, const.img_res)
+
+        if True:
+            large_flow_map = F.interpolate(low_flow_map, [const.img_res, const.img_res], mode='bilinear')
+
         large_flow = large_flow_map.permute(0,2,3,1)
         source_warped_image= F.grid_sample(img, large_flow,align_corners=False,mode='bilinear', padding_mode='border')
+
 
         low_pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         low_feature_map = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)

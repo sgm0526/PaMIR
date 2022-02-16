@@ -742,8 +742,8 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
-            pt_tex_feature = pt_out[:, :, 5:-1]
+            pt_tex_coord = pt_out[:, :, 3:3+2].unsqueeze(2)
+            pt_tex_feature = pt_out[:, :, 3+2:-1]
             #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
             pt_tex_sigma = None
         else:
@@ -766,8 +766,8 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
-            pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
-            pt_tex_feature = pt_out[:, :, 5:-1]
+            pt_tex_coord = pt_out[:, :, 3:3+2].unsqueeze(2)
+            pt_tex_feature = pt_out[:, :, 3+2:-1]
             #pt_tex_att = pt_out[:, :, 5:6].sigmoid()
             pt_tex_sigma = pt_out[:, :, -1:]
         ##
@@ -990,7 +990,7 @@ class NeuralRenderer(nn.Module):
             ])
         self.actvn = nn.LeakyReLU(0.2, inplace=True)
 
-    def forward(self, x, large_rgb):
+    def forward(self, x):
 
         net = self.conv_in(x)
 
@@ -1012,9 +1012,24 @@ class NeuralRenderer(nn.Module):
             rgb = self.conv_rgb(net)
 
         if self.final_actvn:
-            rgb = torch.sigmoid(rgb)
+            rgb =  torch.sigmoid(rgb)
         return rgb
 
+
+class NeuralRenderer_flow(nn.Module):
+    def __init__(self, input_dim=128, out_dim=3, ):
+        super().__init__()
+
+        layers = [nn.Conv2d(input_dim, 128, 3, 1, 1),
+                  nn.LeakyReLU(0.2),
+                  nn.Conv2d(128, out_dim, 3, 1, 1)]
+
+
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        coord = self.layers(x)
+        return coord
 
 class NeuralRenderer_coord(nn.Module):
     ''' Neural renderer class
@@ -1032,8 +1047,7 @@ class NeuralRenderer_coord(nn.Module):
         use_norm (bool): whether to use normalization
     '''
 
-    def __init__(
-            self, n_feat=64):
+    def __init__(self, n_feat=64):
         super().__init__()
 
         layers = [nn. Linear(n_feat, n_feat), nn.LeakyReLU(0.2), nn.Linear(n_feat, 2), nn.Tanh()]
@@ -1042,8 +1056,6 @@ class NeuralRenderer_coord(nn.Module):
     def forward(self, x):
         coord = self.layers(x)
         return coord
-
-
 
 class ResnetBlock(nn.Module):
     def __init__(self, fin, fout, fhidden=None, is_bias=True):
