@@ -370,11 +370,15 @@ class Trainer(BaseTrainer):
         feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                sampled_z_vals, device=self.device)#, white_back=True)
 
+        all_outputs = torch.cat([nerf_output_att, nerf_output_sigma], dim=-1)
+        att_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                               sampled_z_vals, device=self.device)  # , white_back=True)
+
         #pred_img = pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, const.feature_res, const.feature_res)
         #source_warped_img = feature_pred.reshape(batch_size, const.feature_res, const.feature_res, -1).permute(0, 3, 1, 2)
 
         feature_pred = F.grid_sample(img, feature_pred.unsqueeze(2)).squeeze(-1).permute(0, 2, 1)
-
+        feature_pred = att_pred * pixels_pred + (1 - att_pred) *feature_pred
 
         return pixels_pred, feature_pred
 
