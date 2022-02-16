@@ -123,11 +123,12 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
             nerf_color, nerf_color_wapred = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                              batch['pose'], batch['scale'], batch['trans'],  torch.ones(batch['img'].shape[0]).to(device)*i)
 
-            save_image(nerf_color, f'./0208_nerf_source_{str(i).zfill(3)}.png')
-            save_image(nerf_color_wapred, f'./0208_nerfwapred_source_{str(i).zfill(3)}.png')
+            save_image(nerf_color, f'./0216_nerf_source_occth0.5{str(i).zfill(3)}.png')
+            #save_image(nerf_color_wapred, f'./0216_nerfwapred_source_{str(i).zfill(3)}.png')
 
         import pdb;
         pdb.set_trace()
+
 
 
 
@@ -202,7 +203,7 @@ if __name__ == '__main__':
                                    pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                                    pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0208_1000_48_02_warpedrgb_offset/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0213_1000_48_03_rayontarget_rayonpts/checkpoints/latest.pt'
 
     main_test_texture(output_dir,
                       output_dir,
