@@ -322,8 +322,10 @@ class AllImgDataset(Dataset):
 
 
         self.data_list = load_data_list(dataset_dir, 'data_list_all.txt')
-        self.source_view_list = list(range(0, 360, 15))
-        self.len = len(self.data_list) * self.view_num_per_item * len(self.source_view_list)
+        print(self.data_list)
+        self.source_view_list = list(range(0, 360, 18))
+        self.target_view_diff = [0, 90, 180, 270]
+        self.len = len(self.data_list) * len(self.target_view_diff) * len(self.source_view_list)
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
@@ -350,10 +352,13 @@ class AllImgDataset(Dataset):
         #     view_id = self.model_2_viewindex[model_id]
 
 
-        model_id = item // (self.view_num_per_item * len(self.source_view_list))
-        view_id = self.source_view_list[(item % (self.view_num_per_item * len(self.source_view_list))) // self.view_num_per_item]
-        target_view_id = (item % (self.view_num_per_item * len(self.source_view_list))) % self.view_num_per_item
-
+        model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
+        view_id = self.source_view_list[(item % (len(self.target_view_diff) * len(self.source_view_list))) // len(self.target_view_diff)]
+        target_view_id_ind = (item % (len(self.target_view_diff) * len(self.source_view_list))) % len(self.target_view_diff)
+        target_view_id = self.target_view_diff[target_view_id_ind]
+        target_view_id = target_view_id + view_id
+        if target_view_id >= 360:
+            target_view_id = target_view_id - 360
         data_item = data_list[model_id]
 
         cam_f = self.default_testing_cam_f
