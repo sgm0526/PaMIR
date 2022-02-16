@@ -105,7 +105,7 @@ class EvaluatorTex(object):
         return pts_ov
 
     def test_nerf_target(self, img, betas, pose, scale, trans, view_diff, return_cam_loc=False):
-        self.pamir_net.eval()
+        #self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans

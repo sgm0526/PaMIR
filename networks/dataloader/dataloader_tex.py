@@ -179,7 +179,7 @@ class TrainingImgDataset(Dataset):
         # img_fpath = os.path.join(
         #     self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color/%04d.jpg' % view_id)
         img_fpath = os.path.join(
-            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data','image_data_nolight'), data_item, 'color_re/%04d.jpg' % view_id)
+            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data','image_data_nolight2'), data_item, 'color_re/%04d.jpg' % view_id)
         msk_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'mask/%04d.png' % view_id)
         try:
@@ -227,7 +227,7 @@ class TrainingImgDataset(Dataset):
         #uvclr_fpath = os.path.join(
         #    self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id)
         uvclr_fpath = os.path.join(
-            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight'), data_item,
+            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight2'), data_item,
             'color_uv_re/%04d.png' % view_id)
         try:
             uv_mask = cv.imread(uvmsk_fpath)

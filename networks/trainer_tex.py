@@ -73,14 +73,16 @@ class Trainer(BaseTrainer):
         self.pamir_tex_net =  TexPamirNetAttention_nerf().to(self.device)
 
         # neural renderer
-        self.decoder_output_size = 128
-        #self.NR = NeuralRenderer_coord().to(self.device)
-        #self.NR = ResDecoder().to(self.device)
 
         self.UseGCMR= False
-        #if self.UseGCMR:
+        self.depthaware = False
+        if self.UseGCMR:
+            self.graph_mesh = Mesh()
+            self.graph_cnn = GraphCNN(self.graph_mesh.adjmat, self.graph_mesh.ref_vertices.t(),
+                                      const.cmr_num_layers, const.cmr_num_channels).to(self.device)
+            self.smpl_param_regressor = SMPLParamRegressor().to(self.device)
 
-
+            self.load_pretrained_gcmr(self.options.pretrained_gcmr_checkpoint)
 
 
         # optimizers
@@ -183,6 +185,7 @@ class Trainer(BaseTrainer):
         losses = dict()
 
         if self.UseGCMR:
+            gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
 
             with torch.no_grad():
                 pred_cam, pred_rotmat, pred_betas, pred_vert_sub, \
@@ -202,13 +205,12 @@ class Trainer(BaseTrainer):
             rand_id = torch.from_numpy(rand_id).long()
             pred_vert_tetsmpl_gtshape_cam[rand_id] = gt_vert_cam[rand_id]
 
-            if self.options.use_adaptive_geo_loss:
-                pts = self.forward_warp_gt_field(
-                    pred_vert_tetsmpl_gtshape_cam, gt_vert_cam, pts, pts2smpl_idx, pts2smpl_wgt)
+            vol = self.voxelization(pred_vert_tetsmpl_gtshape_cam)
 
+            if self.depthaware:  ##not yet
+                pts_occ = self.forward_warp_gt_field(
+                    pred_vert_tetsmpl_gtshape_cam, gt_vert_cam, pts_occ, pts2smpl_idx, pts2smpl_wgt)
 
-
-            check = 1
         else:
             with torch.no_grad():
                 gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
@@ -231,7 +233,8 @@ class Trainer(BaseTrainer):
         output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(img, vol, pts, pts_proj)#, img_feat_geo, feat_occupancy)
 
         # import pdb; pdb.set_trace
-        losses['tex'] = self.tex_loss(output_clr, gt_clr) + self.tex_loss(output_clr_, gt_clr)
+        losses['tex'] = self.tex_loss(output_clr_, gt_clr)
+        losses['tex_final'] = self.tex_loss(output_clr, gt_clr)
 
 
         ## 3 train nerf loss
@@ -392,6 +395,8 @@ class Trainer(BaseTrainer):
             return F.softplus(-pred).view(bs, -1).mean(dim=1)
         else:
             return F.softplus(pred).view(bs, -1).mean(dim=1)
+
+    ## from
     def geo_loss(self, pred_ov, gt_ov):
         """Computes per-sample loss of the occupancy value"""
         if self.options.use_multistage_loss:
@@ -417,6 +422,62 @@ class Trainer(BaseTrainer):
         pred_keypoints_2d = orthographic_projection(pred_keypoints, pred_cam)
         return pred_cam, pred_rotmat, pred_betas, pred_vert_sub, \
                pred_vert, pred_vert_tetsmpl, pred_keypoints_2d
+
+    def load_pretrained_gcmr(self, model_path):
+        if os.path.isdir(model_path):
+            tmp = glob.glob(os.path.join(model_path, 'gcmr*.pt'))
+            assert len(tmp) == 1
+            logging.info('Loading GraphCMR from ' + tmp[0])
+            data = torch.load(tmp[0])
+        else:
+            data = torch.load(model_path)
+        self.graph_cnn.load_state_dict(data['graph_cnn'])
+        self.smpl_param_regressor.load_state_dict(data['smpl_param_regressor'])
+
+    def forward_coordinate_conversion(self, pred_vert_tetsmpl, cam_f, cam_tz, cam_c,
+                                      cam_r, cam_t, pred_cam, gt_trans):
+        # calculates camera parameters
+        with torch.no_grad():
+            pred_smpl_joints = self.tet_smpl.get_smpl_joints(pred_vert_tetsmpl).detach()
+            pred_root = pred_smpl_joints[:, 0:1, :]
+            if gt_trans is not None:
+                scale = pred_cam[:, 0:1] * cam_c * (cam_tz - gt_trans[:, 0, 2:3]) / cam_f
+                trans_x = pred_cam[:, 1:2] * cam_c * (
+                        cam_tz - gt_trans[:, 0, 2:3]) * pred_cam[:, 0:1] / cam_f
+                trans_y = -pred_cam[:, 2:3] * cam_c * (
+                        cam_tz - gt_trans[:, 0, 2:3]) * pred_cam[:, 0:1] / cam_f
+                trans_z = gt_trans[:, 0, 2:3] + 2 * pred_root[:, 0, 2:3] * scale
+            else:
+                scale = pred_cam[:, 0:1] * cam_c * cam_tz / cam_f
+                trans_x = pred_cam[:, 1:2] * cam_c * cam_tz * pred_cam[:, 0:1] / cam_f
+                trans_y = -pred_cam[:, 2:3] * cam_c * cam_tz * pred_cam[:, 0:1] / cam_f
+                trans_z = torch.zeros_like(trans_x)
+            scale_ = torch.cat([scale, -scale, -scale], dim=-1).detach().view((-1, 1, 3))
+            trans_ = torch.cat([trans_x, trans_y, trans_z], dim=-1).detach().view((-1, 1, 3))
+
+        return scale_, trans_
+
+    def forward_warp_gt_field(self, pred_vert_tetsmpl_gtshape_cam, gt_vert_cam,
+                              pts, pts2smpl_idx, pts2smpl_wgt):
+        with torch.no_grad():
+            trans_gt2pred = pred_vert_tetsmpl_gtshape_cam - gt_vert_cam
+
+            trans_z_pt_list = []
+            for bi in range(self.options.batch_size):
+                trans_pt_bi = (
+                        trans_gt2pred[bi, pts2smpl_idx[bi, :, 0], 2] * pts2smpl_wgt[bi, :, 0] +
+                        trans_gt2pred[bi, pts2smpl_idx[bi, :, 1], 2] * pts2smpl_wgt[bi, :, 1] +
+                        trans_gt2pred[bi, pts2smpl_idx[bi, :, 2], 2] * pts2smpl_wgt[bi, :, 2] +
+                        trans_gt2pred[bi, pts2smpl_idx[bi, :, 3], 2] * pts2smpl_wgt[bi, :, 3]
+                )
+                trans_z_pt_list.append(trans_pt_bi.unsqueeze(0))
+            trans_z_pts = torch.cat(trans_z_pt_list, dim=0)
+            # translate along z-axis to resolve depth inconsistency
+            # pts[:, :, 2] += trans_z_pts
+            pts[:, :, 2] += torch.tanh(trans_z_pts * 20) / 20
+        return pts
+
+    ## to
     def tex_loss(self, pred_clr, gt_clr, att=None):
         """Computes per-sample loss of the occupancy value"""
         if att is None:
