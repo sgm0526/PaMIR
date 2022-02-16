@@ -77,6 +77,11 @@ class Trainer(BaseTrainer):
         #self.NR = NeuralRenderer_coord().to(self.device)
         #self.NR = ResDecoder().to(self.device)
 
+        self.UseGCMR= False
+        #if self.UseGCMR:
+
+
+
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
@@ -143,6 +148,8 @@ class Trainer(BaseTrainer):
         pts_occ = input_batch['pts_occ']  # [:, :-self.options.point_num]
         pts_occ_proj = input_batch['pts_occ_proj']  # [:, :-self.options.point_num]
         gt_ov = input_batch['pts_ov']  # [:, :-self.options.point_num]
+        pts2smpl_idx = input_batch['pts2smpl_idx']  # [:, :-self.options.point_num]
+        pts2smpl_wgt = input_batch['pts2smpl_wgt']  # [:, :-self.options.point_num]
 
 
         gt_clr = input_batch['pts_clr']   # [:, :-self.options.point_num]
@@ -175,11 +182,42 @@ class Trainer(BaseTrainer):
         batch_size, pts_num = pts.size()[:2]
         losses = dict()
 
-        with torch.no_grad():
-            gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
-            vol = self.voxelization(gt_vert_cam)    # we simply use ground-truth SMPL for when training texture module
-            #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-            #feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts, pts_proj)
+        if self.UseGCMR:
+
+            with torch.no_grad():
+                pred_cam, pred_rotmat, pred_betas, pred_vert_sub, \
+                pred_vert, pred_vert_tetsmpl, pred_keypoints_2d = self.forward_gcmr(img)
+
+                # camera coordinate conversion
+                scale_, trans_ = self.forward_coordinate_conversion(
+                    pred_vert_tetsmpl, cam_f, cam_tz, cam_c, cam_r, cam_t, pred_cam, gt_trans)
+                # pred_vert_cam = scale_ * pred_vert + trans_
+                # pred_vert_tetsmpl_cam = scale_ * pred_vert_tetsmpl + trans_
+
+                pred_vert_tetsmpl_gtshape_cam = \
+                    scale_ * self.tet_smpl(pred_rotmat, pred_betas.detach()) + trans_
+
+            # randomly replace one predicted SMPL with ground-truth one
+            rand_id = np.random.randint(0, batch_size, size=[batch_size//3])
+            rand_id = torch.from_numpy(rand_id).long()
+            pred_vert_tetsmpl_gtshape_cam[rand_id] = gt_vert_cam[rand_id]
+
+            if self.options.use_adaptive_geo_loss:
+                pts = self.forward_warp_gt_field(
+                    pred_vert_tetsmpl_gtshape_cam, gt_vert_cam, pts, pts2smpl_idx, pts2smpl_wgt)
+
+
+
+            check = 1
+        else:
+            with torch.no_grad():
+                gt_vert_cam = gt_scale * self.tet_smpl(gt_pose, gt_betas) + gt_trans
+                vol = self.voxelization(gt_vert_cam)  # we simply use ground-truth SMPL for when training texture module
+                # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+                # feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, pts, pts_proj)
+
+
+
 
 
         ## 1 train geo loss
@@ -363,7 +401,22 @@ class Trainer(BaseTrainer):
         else:
             loss = self.criterion_geo(pred_ov[-1], gt_ov)
         return loss
-
+    def forward_gcmr(self, img):
+        # GraphCMR forward
+        batch_size = img.size()[0]
+        img_ = self.img_norm(img)
+        pred_vert_sub, pred_cam = self.graph_cnn(img_)
+        pred_vert_sub = pred_vert_sub.transpose(1, 2)
+        pred_vert = self.graph_mesh.upsample(pred_vert_sub)
+        x = torch.cat(
+            [pred_vert_sub, self.graph_mesh.ref_vertices[None, :, :].expand(batch_size, -1, -1)],
+            dim=-1)
+        pred_rotmat, pred_betas = self.smpl_param_regressor(x)
+        pred_vert_tetsmpl = self.tet_smpl(pred_rotmat, pred_betas)
+        pred_keypoints = self.smpl.get_joints(pred_vert)
+        pred_keypoints_2d = orthographic_projection(pred_keypoints, pred_cam)
+        return pred_cam, pred_rotmat, pred_betas, pred_vert_sub, \
+               pred_vert, pred_vert_tetsmpl, pred_keypoints_2d
     def tex_loss(self, pred_clr, gt_clr, att=None):
         """Computes per-sample loss of the occupancy value"""
         if att is None:

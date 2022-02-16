@@ -104,7 +104,7 @@ class BaseTrainer(object):
 
                     if self.step_count % (50*self.options.summary_steps) == 0:
                         evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
-                        evaluater.pamir_net = self.pamir_net
+                        #evaluater.pamir_net = self.pamir_net
                         evaluater.pamir_tex_net = self.pamir_tex_net
 
                         nerf_color_pred_list =[]

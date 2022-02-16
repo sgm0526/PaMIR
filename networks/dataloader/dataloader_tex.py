@@ -154,6 +154,8 @@ class TrainingImgDataset(Dataset):
             'pts_occ': torch.from_numpy(pts_occ_r),
             'pts_occ_proj': torch.from_numpy(pts_occ_proj),
             'pts_ov': torch.from_numpy(pts_ov),
+            'pts2smpl_idx': torch.from_numpy(pts2smpl_idx),
+            'pts2smpl_wgt': torch.from_numpy(pts2smpl_wgt),
             # 'pts_clr': torch.from_numpy(pts_clr),
             # 'pts_clr_msk': torch.from_numpy(pts_clr_msk),
             'betas': torch.from_numpy(betas),

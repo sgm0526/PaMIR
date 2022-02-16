@@ -224,11 +224,11 @@ class EvaluatorTex(object):
                 # sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
 
-                img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-                nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points , sampled_points_proj )
+                #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+                #nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points , sampled_points_proj )
 
                 nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
-                    img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy)
+                    img, vol, sampled_points, sampled_points_proj)#, img_feat_geo, nerf_feat_occupancy)
 
             ##
 
