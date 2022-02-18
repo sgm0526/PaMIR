@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=4
-NAME='pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ'
+GPU_ID=1
+NAME='pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_attloss'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -17,10 +17,10 @@ NUM_EPOCHS=200
 SUMMARY_STEPS=20
 CHECKPOINTS_STEPS=20000
 TEST_STEPS=5000
-NUM_WORKERS=12
+NUM_WORKERS=8
 
 
-CUDA_VISIBLE_DEVICES=${GPU_ID} python main_train_tex.py \
+CUDA_VISIBLE_DEVICES=${GPU_ID} OMP_NUM_TRHEAD=1 python main_train_tex.py \
 --name ${NAME} \
 --log_dir ${LOG_DIR} \
 --pretrained_gcmr_checkpoint ${PRETRAINED_GCMR_CHECKPOINT} \

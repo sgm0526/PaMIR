@@ -61,7 +61,7 @@ class EvaluatorTex(object):
 
         self.models_dict = {'pamir_tex_net': self.pamir_tex_net,'pamir_tex_NR': self.NR}
         if not no_weight:
-            self.load_pretrained_pamir_net(pretrained_checkpoint_pamir)
+            #self.load_pretrained_pamir_net(pretrained_checkpoint_pamir)
             self.load_pretrained(checkpoint_file=pretrained_checkpoint_pamir_tex)
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
@@ -154,6 +154,7 @@ class EvaluatorTex(object):
             sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
             num_ray_part = sampled_points.size(1)
+            num_steps = const.num_steps
             #num_ray -> num_ray_part
 
         ##
@@ -163,6 +164,44 @@ class EvaluatorTex(object):
                 sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
                 # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+
+                if const.hierarchical:
+                    # import pdb; pdb.set_trace()
+                    _, _, _, _, occ = self.pamir_tex_net.forward(img, vol, sampled_points, sampled_points_proj)
+                    #import pdb; pdb.set_trace()
+                    occ = occ.reshape(batch_size, num_ray_part, num_steps, -1)
+                    occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
+                    max_index = occ_diff.argmax(dim=2) + 1
+                    max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+
+                    std = 0.1
+                    std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1)
+                    fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+
+                    sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                    fine_points = sampled_rays_d_world * fine_z_vals[..., None]
+                    fine_points[:, :, :, 2] += cam_tz
+                    fine_points = self.rotate_points(fine_points, view_diff)
+                    fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
+
+                    all_points = torch.cat([sampled_points.reshape(batch_size,num_ray_part, num_steps, 3), fine_points],
+                                           dim=2)
+                    all_points_proj = torch.cat(
+                        [sampled_points_proj.reshape(batch_size, num_ray_part, num_steps, 2), fine_points_proj], dim=2)
+                    all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
+
+                    _, indices = torch.sort(all_z_vals, dim=2)
+                    all_z_vals = torch.gather(all_z_vals, 2, indices)
+                    all_points = torch.gather(all_points, 2, indices.expand(-1, -1, -1, 3)).reshape(batch_size,
+                                                                                                    num_ray_part * num_steps * 2,
+                                                                                                    3)
+                    all_points_proj = torch.gather(all_points_proj, 2, indices.expand(-1, -1, -1, 2)).reshape(
+                        batch_size, num_ray_part * num_steps * 2, 2)
+
+                    sampled_points = all_points
+                    sampled_points_proj = all_points_proj
+                    sampled_z_vals = all_z_vals
+                    num_steps = num_steps * 2
 
                 nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, sampled_points, sampled_points_proj)  # , img_feat_geo, nerf_feat_occupancy)
@@ -189,8 +228,8 @@ class EvaluatorTex(object):
         return pts_clr_pred, pts_clr_warped
 
 
-    def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
-        self.pamir_net.eval()
+    def test_nerf_target_sigma(self, img, betas, pose, scale, trans, vol_res):
+        #self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
@@ -200,7 +239,7 @@ class EvaluatorTex(object):
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
         cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
 
-        vol_res= 128
+
 
 
         pts, pts_proj = self.generate_point_grids(
@@ -237,17 +276,8 @@ class EvaluatorTex(object):
         # pdb.set_trace()
         pts_clr2 = torch.cat(pts_clr, dim=1)[0]
         pts_clr2 = pts_clr2.reshape( vol_res,  vol_res,  vol_res)
-        with mrcfile.new_mmap(os.path.join('./', f'{1}.mrc'), overwrite=True, shape=pts_clr2.shape, mrc_mode=2) as mrc:
-            mrc.data[:] = pts_clr2
 
-        vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(pts_clr2), 15)
-        mesh = dict()
-        mesh['v'] = vertices /  vol_res - 0.5
-        mesh['f'] = simplices[:, (1, 0, 2)]
-        mesh['vn'] = normals
-
-        obj_io.save_obj_data(mesh, './sigma_mesh.obj')
-        return
+        return pts_clr2
 
     def test_tex_featurenerf(self, img, mesh_v, betas, pose, scale, trans, qwe):
 
@@ -356,7 +386,7 @@ class EvaluatorTex(object):
 
 
     def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
-        self.pamir_net.eval()
+        #self.pamir_net.eval()
         self.pamir_tex_net.eval()
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
         vol = self.voxelization(gt_vert_cam)
@@ -413,8 +443,8 @@ class EvaluatorTex(object):
         return pts_clr
 
     def forward_infer_color_value(self, img, vol, pts, pts_proj):
-        img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        clr, _, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo, feat_occupancy=None) ##
+        #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
+        _,clr, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj)#, img_feat_geo, feat_occupancy=None) ##
         return clr
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):

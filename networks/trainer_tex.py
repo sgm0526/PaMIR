@@ -226,7 +226,7 @@ class Trainer(BaseTrainer):
 
         _,_,_,_,output_sdf = self.pamir_tex_net.forward(img, vol, pts_occ, pts_occ_proj)
         losses['geo'] = self.geo_loss(output_sdf, gt_ov)
-
+        #self.loss_weights['geo'] =0
 
         ## 2 train tex loss
 
@@ -235,7 +235,9 @@ class Trainer(BaseTrainer):
         # import pdb; pdb.set_trace
         losses['tex'] = self.tex_loss(output_clr_, gt_clr)
         losses['tex_final'] = self.tex_loss(output_clr, gt_clr)
-
+        losses['att'] = self.attention_loss(output_att)
+        #self.loss_weights['tex'] = 0
+        #self.loss_weights['tex_final'] = 0
 
         ## 3 train nerf loss
 
@@ -250,6 +252,17 @@ class Trainer(BaseTrainer):
         points_cam[:, :, :, 2] += cam_tz
 
         points_cam_source = self.rotate_points(points_cam, view_diff)
+        if False:
+            # import pdb; pdb.set_trace()
+            ###
+            num_ray = 1000
+            ray_index = np.random.randint(0, img_size * img_size,  num_ray )
+            sampled_points= points_cam_source[:, ray_index]
+            #sampled_points_global = points_cam_global[:, ray_index]
+            sampled_z_vals = z_vals[:, ray_index]
+            sampled_rays_d_world = rays_d_cam[:, ray_index]
+            gt_clr_nerf= target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
+
 
 
         if True:
@@ -305,8 +318,48 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
+
+
+        if const.hierarchical:
+            with torch.no_grad():
+                #import pdb; pdb.set_trace()
+                _,_,_,_, occ= self.pamir_tex_net.forward( img, vol, sampled_points, sampled_points_proj)
+                occ =occ.reshape(batch_size, num_ray, num_steps, -1)
+                occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
+                max_index = occ_diff.argmax(dim=2) + 1
+                max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+
+                std = 0.1
+                std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
+                fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+
+                sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                fine_points = sampled_rays_d_world * fine_z_vals[..., None]
+                fine_points[:, :, :, 2] += cam_tz
+                fine_points = self.rotate_points(fine_points, view_diff)
+                fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
+
+                all_points = torch.cat([sampled_points.reshape(batch_size, num_ray, num_steps, 3), fine_points], dim=2)
+                all_points_proj = torch.cat([sampled_points_proj.reshape(batch_size, num_ray, num_steps, 2),fine_points_proj], dim=2)
+                all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
+
+                _, indices = torch.sort(all_z_vals, dim=2)
+                all_z_vals = torch.gather(all_z_vals, 2, indices)
+                all_points = torch.gather(all_points, 2, indices.expand(-1, -1, -1, 3)).reshape(batch_size, num_ray * num_steps * 2, 3)
+                all_points_proj = torch.gather(all_points_proj, 2, indices.expand(-1, -1, -1, 2)).reshape(batch_size, num_ray * num_steps * 2, 2)
+
+                sampled_points = all_points
+                sampled_points_proj = all_points_proj
+                sampled_z_vals = all_z_vals
+                num_steps = num_steps*2
+
+                #import pdb; pdb.set_trace()
+
+
+
         nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
-            img, vol, sampled_points, sampled_points_proj)  # , img_feat_geo, nerf_feat_occupancy)
+            img, vol, sampled_points, sampled_points_proj)
+
 
         all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
         pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
@@ -319,6 +372,7 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
+
 
         if self.TrainGAN:
             ## GAN loss
