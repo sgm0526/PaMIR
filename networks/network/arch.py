@@ -624,23 +624,23 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.pe_ch =num_freq * 2 * 3 + 3
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
 
-        self.img_feat_ch = 256 + self.feat_ch_2D
-        self.attention = MultiHeadAttention(4,  self.feat_ch_3D, self.img_feat_ch, 4, 4)
+        #self.img_feat_ch = 256 + self.feat_ch_2D
+        #self.attention = MultiHeadAttention(4,  self.feat_ch_3D, self.img_feat_ch, 4, 4)
         self.add_module('mlp',
-                        MLP_NeRF(self.feat_ch_3D +self.img_feat_ch +  self.pe_ch, self.feat_ch_occupancy,
+                        MLP_NeRF(156 + self.feat_ch_2D+ self.feat_ch_3D  +  self.pe_ch, self.feat_ch_occupancy,
                                  self.feat_ch_out))
 
-        self.img_feat_encoder = nn.Sequential(*[
-            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
-            nn.GroupNorm(32, self.img_feat_ch),
-            nn.ReLU(),
-            nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
-            #nn.GroupNorm(32, self.img_feat_ch),
-            #nn.ReLU(),
-            #nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
-            #nn.GroupNorm(32, self.img_feat_ch),
-            #nn.ReLU(),
-        ])
+        # self.img_feat_encoder = nn.Sequential(*[
+        #     nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+        #     nn.GroupNorm(32, self.img_feat_ch),
+        #     nn.ReLU(),
+        #     nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+        #     #nn.GroupNorm(32, self.img_feat_ch),
+        #     #nn.ReLU(),
+        #     #nn.Conv2d(self.img_feat_ch, self.img_feat_ch, 3, 2, 1),
+        #     #nn.GroupNorm(32, self.img_feat_ch),
+        #     #nn.ReLU(),
+        # ])
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
         logging.info('#trainable params of 3d encoder = %d' %
@@ -682,22 +682,16 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                                    mode='bilinear', padding_mode='border')
         pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
 
-        pt_feat = pt_feat_3D #torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
+        pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
 
         ##add coordinate
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
-
-        img_feat = self.img_feat_encoder(img_feat)
-        key_value_feature = img_feat.reshape(batch_size, img_feat.size(1), -1).permute(0, 2, 1)
-        output, attn = self.attention(pt_feat.squeeze(-1).permute(0,2,1), key_value_feature, key_value_feature)
 
 
 
         #import pdb; pdb.set_trace()
         if feat_occupancy is None:
-            pt_out = self.mlp.forward_color(
-                torch.cat([output.permute(0, 2, 1).unsqueeze(-1), pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
-            #pt_out = self.mlp.forward_color(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+            pt_out = self.mlp.forward_color(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out-1)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
@@ -705,9 +699,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_tex_att = pt_out[:, :, 3:4].sigmoid()
             pt_tex_sigma = None
         else:
-            pt_out = self.mlp(torch.cat([output.permute(0, 2, 1).unsqueeze(-1), pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1), feat_occupancy)
-
-            #pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
+            pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1),  feat_occupancy)
             pt_out = pt_out.permute([0, 2, 3, 1])
             pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
             pt_tex_pred = pt_out[:, :, :3].sigmoid()
