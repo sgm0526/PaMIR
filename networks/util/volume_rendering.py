@@ -33,7 +33,7 @@ def torch_dot(x: torch.Tensor, y: torch.Tensor):
     return (x * y).sum(-1)
 
 
-def fancy_integration(rgb_sigma, z_vals, device, noise_std=0.5, last_back=False, white_back=False, clamp_mode='relu', fill_mode=None):
+def fancy_integration(rgb_sigma, z_vals, device, noise_std=0.5, last_back=False, white_back=False, clamp_mode='relu', fill_mode=None, weight_refine=False):
     """Performs NeRF volumetric rendering."""
 
     rgbs = rgb_sigma[..., :-1]
@@ -55,6 +55,13 @@ def fancy_integration(rgb_sigma, z_vals, device, noise_std=0.5, last_back=False,
     alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1-alphas + 1e-10], -2)
     weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1]
     weights_sum = weights.sum(2)
+    if weight_refine:
+        weights_sum_05_over = weights_sum >0.5
+        weights = weights * weights_sum_05_over[..., None]
+        weights_sum = weights.sum(dim=2)
+        weights_sum = weights_sum + (weights_sum==0)
+        weights = weights / weights_sum[..., None].repeat(1, 1, rgbs.size(2), 1)
+        weights_sum = weights.sum(2)
 
     if last_back:
         weights[:, :, -1] += (1 - weights_sum)

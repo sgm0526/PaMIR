@@ -147,6 +147,8 @@ class EvaluatorTex(object):
         pts_group_num = (img_size * img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
         pts_clr_warped = []
+        pts_attention = []
+        pts_tex = []
 
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
         img_feats = self.pamir_net.hg(img)
@@ -170,7 +172,7 @@ class EvaluatorTex(object):
                 sampled_points = sampled_points.reshape(batch_size, -1, 3)  # 1 group_size*num_step, 3
                 sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-                pixels_pred, pixels_warped = self.get_nerf(img, vol, img_feat_geo, sampled_points,
+                pixels_pred, pixels_warped, attention, pt_tex_pred = self.get_nerf(img, vol, img_feat_geo, sampled_points,
                                                            sampled_points_proj,
                                                            sampled_z_vals, sampled_rays_d_world, hierarchical,
                                                            batch_size,
@@ -180,6 +182,8 @@ class EvaluatorTex(object):
 
                 pts_clr_pred.append(pixels_pred.detach().cpu())
                 pts_clr_warped.append(pixels_warped.detach().cpu())
+                pts_attention.append(attention.detach().cpu())
+                pts_tex.append(pt_tex_pred.detach().cpu())
 
         pts_clr_pred = torch.cat(pts_clr_pred, dim=1)
         ch_num = pts_clr_pred.size(2)
@@ -187,10 +191,16 @@ class EvaluatorTex(object):
         pts_clr_warped = torch.cat(pts_clr_warped, dim=1)
         ch_num = pts_clr_warped.size(2)
         pts_clr_warped = pts_clr_warped.permute(0, 2, 1).reshape(batch_size, ch_num, img_size, img_size)
+        pts_attention = torch.cat(pts_attention, dim=1)
+        ch_num = pts_attention.size(2)
+        pts_attention = pts_attention.permute(0, 2, 1).reshape(batch_size, ch_num, img_size, img_size)
+        pts_tex = torch.cat(pts_tex, dim=1)
+        ch_num = pts_tex.size(2)
+        pts_tex = pts_tex.permute(0, 2, 1).reshape(batch_size, ch_num, img_size, img_size)
         if return_cam_loc:
             return pts_clr_pred, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
-        return pts_clr_pred, pts_clr_warped
+        return pts_clr_pred, pts_clr_warped, pts_attention, pts_tex
 
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, view_diff):
@@ -541,7 +551,7 @@ class EvaluatorTex(object):
             sampled_z_vals = all_z_vals
 
         else:
-            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
+            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma, nerf_pt_tex_pred = self.pamir_tex_net.forward(
                 img, vol, sampled_points, sampled_points_proj, img_feat_geo, nerf_feat_occupancy, img_feat_tex=img_feat_tex, vol_feat=vol_feat_tex, return_flow_feature=return_flow_feature)
 
         if return_flow_feature:
@@ -552,6 +562,13 @@ class EvaluatorTex(object):
             all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
             feature_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
                                                    sampled_z_vals, device=self.device)  # , white_back=True)
+
+            all_outputs = torch.cat([nerf_output_att, nerf_output_sigma], dim=-1)
+            attention, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                   sampled_z_vals, device=self.device)  # , white_back=True)
+            all_outputs = torch.cat([nerf_pt_tex_pred, nerf_output_sigma], dim=-1)
+            pt_tex_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                   sampled_z_vals, device=self.device)
         else:
             all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             pixels_pred, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
@@ -562,5 +579,9 @@ class EvaluatorTex(object):
                                                    sampled_z_vals, device=self.device)  # , white_back=True)
             feature_pred = F.grid_sample(img, feature_pred.unsqueeze(2)).squeeze(-1).permute(0, 2, 1)
 
+            all_outputs = torch.cat([nerf_output_att, nerf_output_sigma], dim=-1)
+            attention, _, _ = fancy_integration(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
+                                                sampled_z_vals, device=self.device)  # , white_back=True)
+            pt_tex_pred = None
 
-        return pixels_pred, feature_pred
+        return pixels_pred, feature_pred, attention, pt_tex_pred
