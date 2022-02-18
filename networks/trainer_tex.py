@@ -147,11 +147,17 @@ class Trainer(BaseTrainer):
         pts = input_batch['pts']    # [:, :-self.options.point_num]
         pts_proj = input_batch['pts_proj']  # [:, :-self.options.point_num]
 
-        pts_occ = input_batch['pts_occ']  # [:, :-self.options.point_num]
-        pts_occ_proj = input_batch['pts_occ_proj']  # [:, :-self.options.point_num]
-        gt_ov = input_batch['pts_ov']  # [:, :-self.options.point_num]
-        pts2smpl_idx = input_batch['pts2smpl_idx']  # [:, :-self.options.point_num]
-        pts2smpl_wgt = input_batch['pts2smpl_wgt']  # [:, :-self.options.point_num]
+        #pts_occ = input_batch['pts_occ']  # [:, :-self.options.point_num]
+        #pts_occ_proj = input_batch['pts_occ_proj']  # [:, :-self.options.point_num]
+        #gt_ov = input_batch['pts_ov']  # [:, :-self.options.point_num]
+        #pts2smpl_idx = input_batch['pts2smpl_idx']  # [:, :-self.options.point_num]
+        #pts2smpl_wgt = input_batch['pts2smpl_wgt']  # [:, :-self.options.point_num]
+        pts_occ_in = input_batch['pts_occ_in']  # [:, :-self.options.point_num]
+        pts_occ_proj_in = input_batch['pts_occ_proj_in']  # [:, :-self.options.point_num]
+        gt_ov_in = input_batch['pts_ov_in']  # [:, :-self.options.point_num]
+        pts_occ_out = input_batch['pts_occ_out']  # [:, :-self.options.point_num]
+        pts_occ_proj_out= input_batch['pts_occ_proj_out']  # [:, :-self.options.point_num]
+        gt_ov_out = input_batch['pts_ov_out']  # [:, :-self.options.point_num]
 
 
         gt_clr = input_batch['pts_clr']   # [:, :-self.options.point_num]
@@ -224,8 +230,12 @@ class Trainer(BaseTrainer):
 
         ## 1 train geo loss
 
-        _,_,_,_,output_sdf = self.pamir_tex_net.forward(img, vol, pts_occ, pts_occ_proj)
-        losses['geo'] = self.geo_loss(output_sdf, gt_ov)
+        #_,_,_,_,output_sdf = self.pamir_tex_net.forward(img, vol, pts_occ, pts_occ_proj)
+        #losses['geo'] = self.geo_loss(output_sdf, gt_ov)
+        _, _, _, _, output_sdf_in = self.pamir_tex_net.forward(img, vol, pts_occ_in, pts_occ_proj_in)
+        losses['geo_in'] = self.geo_loss(output_sdf_in, gt_ov_in)
+        _, _, _, _, output_sdf_out = self.pamir_tex_net.forward(img, vol, pts_occ_out, pts_occ_proj_out)
+        losses['geo_out'] = self.geo_loss(output_sdf_out, gt_ov_out)
         #self.loss_weights['geo'] =0
 
         ## 2 train tex loss
@@ -313,11 +323,11 @@ class Trainer(BaseTrainer):
             gt_clr_nerf = torch.cat([gt_clr_nerf, gt_clr_nerf_random], 1)
 
 
-        sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
 
+
+        sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-
 
 
         if const.hierarchical:
@@ -326,12 +336,24 @@ class Trainer(BaseTrainer):
                 _,_,_,_, occ= self.pamir_tex_net.forward( img, vol, sampled_points, sampled_points_proj)
                 occ =occ.reshape(batch_size, num_ray, num_steps, -1)
                 occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
-                max_index = occ_diff.argmax(dim=2) + 1
-                max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+                start_index = occ_diff.argmax(dim=2)
+                import pdb; pdb.set_trace()
+                end_index = occ_diff.argmax(dim=2) + 1
+                start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
 
-                std = 0.1
-                std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
-                fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+                #import pdb; pdb.set_trace()
+
+                z_vals_diff = end_z_vals - start_z_vals
+                line_01= torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray, 1).cuda()
+                fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) *line_01 #batch, num_ray, 24
+
+
+                #std=0.1
+                #max_z_vals = end_z_vals
+                #std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
+                #fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+
 
                 sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                 fine_points = sampled_rays_d_world * fine_z_vals[..., None]
@@ -372,6 +394,8 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
+        #self.loss_weights['nerf_tex'] =0
+        #self.loss_weights['nerf_tex_final'] =0
 
 
         if self.TrainGAN:

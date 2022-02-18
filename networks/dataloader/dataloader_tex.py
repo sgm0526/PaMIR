@@ -106,10 +106,18 @@ class TrainingImgDataset(Dataset):
         pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, view_id, point_num)
 
         ##
-        pts_ids, pts_occ, pts_ov = self.load_points_occ(data_item, point_num)
-        pts2smpl_idx, pts2smpl_wgt = self.load_sample2smpl_data(data_item, pts_ids)
-        pts_occ_r = self.rotate_points(pts_occ, view_id)
-        pts_occ_proj = self.project_points(pts_occ, cam_R, cam_t, cam_f)
+        #pts_ids, pts_occ, pts_ov = self.load_points_occ(data_item, point_num)
+        #pts2smpl_idx, pts2smpl_wgt = self.load_sample2smpl_data(data_item, pts_ids)
+        #pts_occ_r = self.rotate_points(pts_occ, view_id)
+        #pts_occ_proj = self.project_points(pts_occ, cam_R, cam_t, cam_f)
+
+        pts_ids_in, pts_occ_in, pts_ov_in = self.load_points_occ_in(data_item, point_num)
+        pts_occ_r_in = self.rotate_points(pts_occ_in, view_id)
+        pts_occ_proj_in = self.project_points(pts_occ_in, cam_R, cam_t, cam_f)
+        pts_ids_out, pts_occ_out, pts_ov_out = self.load_points_occ_out(data_item, point_num)
+        pts_occ_r_out = self.rotate_points(pts_occ_out, view_id)
+        pts_occ_proj_out = self.project_points(pts_occ_out, cam_R, cam_t, cam_f)
+
 
         ##
 
@@ -151,11 +159,17 @@ class TrainingImgDataset(Dataset):
             'pts': torch.from_numpy(pts_r),
             'pts_proj': torch.from_numpy(pts_proj),
             'pts_clr': torch.from_numpy(pts_clr),
-            'pts_occ': torch.from_numpy(pts_occ_r),
-            'pts_occ_proj': torch.from_numpy(pts_occ_proj),
-            'pts_ov': torch.from_numpy(pts_ov),
-            'pts2smpl_idx': torch.from_numpy(pts2smpl_idx),
-            'pts2smpl_wgt': torch.from_numpy(pts2smpl_wgt),
+            # 'pts_occ': torch.from_numpy(pts_occ_r),
+            # 'pts_occ_proj': torch.from_numpy(pts_occ_proj),
+            # 'pts_ov': torch.from_numpy(pts_ov),
+            # 'pts2smpl_idx': torch.from_numpy(pts2smpl_idx),
+            # 'pts2smpl_wgt': torch.from_numpy(pts2smpl_wgt),
+            'pts_occ_in': torch.from_numpy(pts_occ_r_in),
+            'pts_occ_proj_in': torch.from_numpy(pts_occ_proj_in),
+            'pts_ov_in': torch.from_numpy(pts_ov_in),
+            'pts_occ_out': torch.from_numpy(pts_occ_r_out),
+            'pts_occ_proj_out': torch.from_numpy(pts_occ_proj_out),
+            'pts_ov_out': torch.from_numpy(pts_ov_out),
             # 'pts_clr': torch.from_numpy(pts_clr),
             # 'pts_clr_msk': torch.from_numpy(pts_clr_msk),
             'betas': torch.from_numpy(betas),
@@ -297,6 +311,59 @@ class TrainingImgDataset(Dataset):
         pts_ov = pts_ov.astype(np.float32)
 
         return (pts_adp_idp, pts_adp_idn, pts_uni_idp, pts_uni_idn), pts, pts_ov
+
+
+    def load_points_occ_in(self, data_item, point_num):
+        dat_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'sample/samples.mat')
+        try:
+            pts_data = sio.loadmat(dat_fpath, verify_compressed_data_integrity=False)
+        except ValueError as e:
+            print('Value error occurred when loading ' + dat_fpath)
+            raise ValueError(str(e))
+
+        pts_adp_idp = np.int32(np.random.rand(point_num//2) * len(pts_data['surface_points_inside']))
+
+        pts_uni_idp = np.int32(np.random.rand(point_num//32) * len(pts_data['uniform_points_inside']))
+
+
+        pts_adp_p = pts_data['surface_points_inside'][pts_adp_idp]
+        pts_uni_p = pts_data['uniform_points_inside'][pts_uni_idp]
+
+
+        pts = np.concatenate([pts_adp_p, pts_uni_p], axis=0)
+        pts_ov = np.concatenate([np.ones([len(pts_adp_p), 1]), np.ones([len(pts_uni_p), 1])], axis=0)
+
+        pts = pts.astype(np.float32)
+        pts_ov = pts_ov.astype(np.float32)
+
+        return (pts_adp_idp, pts_uni_idp), pts, pts_ov
+
+    def load_points_occ_out(self, data_item, point_num):
+        dat_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'sample/samples.mat')
+        try:
+            pts_data = sio.loadmat(dat_fpath, verify_compressed_data_integrity=False)
+        except ValueError as e:
+            print('Value error occurred when loading ' + dat_fpath)
+            raise ValueError(str(e))
+
+
+        pts_adp_idn = np.int32(np.random.rand(point_num//2) * len(pts_data['surface_points_outside']))
+        pts_uni_idn = np.int32(np.random.rand(point_num//32) * len(pts_data['uniform_points_outside']))
+
+
+        pts_adp_n = pts_data['surface_points_outside'][pts_adp_idn]
+        pts_uni_n = pts_data['uniform_points_outside'][pts_uni_idn]
+
+        pts = np.concatenate([pts_adp_n, pts_uni_n], axis=0)
+        pts_ov = np.concatenate([np.zeros([len(pts_adp_n), 1]), np.zeros([len(pts_uni_n), 1]),
+        ], axis=0)
+
+        pts = pts.astype(np.float32)
+        pts_ov = pts_ov.astype(np.float32)
+
+        return (pts_adp_idn, pts_uni_idn), pts, pts_ov
     def load_sample2smpl_data(self, data_item, pts_ids):
         dat_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'sample/sample2smpl.mat')

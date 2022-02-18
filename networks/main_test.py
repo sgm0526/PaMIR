@@ -174,9 +174,11 @@ def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
         import numpy as np
         img_dir = batch['img_dir'][0]
         img_fname = os.path.split(img_dir)[1]
-        mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '_sigma_mesh_nerf.obj')
 
-        with mrcfile.new_mmap(os.path.join('./', f'{1}.mrc'), overwrite=True, shape=nerf_sigma .shape, mrc_mode=2) as mrc:
+
+        mesh_fname = os.path.join(out_dir, 'results', img_fname[:-4] + '_sigma_mesh_nonerf.obj')
+
+        with mrcfile.new_mmap(os.path.join(out_dir, 'results',  img_fname[:-4] + '_sigma_mesh_nonerf.mrc'), overwrite=True, shape=nerf_sigma.shape, mrc_mode=2) as mrc:
             mrc.data[:] = nerf_sigma
 
         thresh = 0.95
@@ -230,8 +232,8 @@ if __name__ == '__main__':
     #                                pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
     #                                pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_nonerf_occ/checkpoints/latest.pt'
+    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_nonerf_occ/checkpoints/latest.pt'
 
     # main_test_texture(output_dir,
     #                   output_dir,
