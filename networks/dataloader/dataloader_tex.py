@@ -321,7 +321,9 @@ class AllImgDataset(Dataset):
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
 
 
-        self.data_list = load_data_list(dataset_dir, 'data_list_all.txt')
+        self.data_list_all = load_data_list(dataset_dir, 'data_list_all.txt')
+        #self.data_list = self.data_list_all[260:]
+        self.data_list = self.data_list_all
         print(self.data_list)
         self.source_view_list = list(range(0, 360, 18))
         self.target_view_diff = [0, 90, 180, 270]
@@ -341,7 +343,7 @@ class AllImgDataset(Dataset):
         return self.len
 
     def __getitem__(self, item):
-        data_list = self.data_list
+        data_list = self.data_list_all
 
 
         # if self.training:
@@ -352,6 +354,7 @@ class AllImgDataset(Dataset):
         #     view_id = self.model_2_viewindex[model_id]
 
 
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 260
         model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
         view_id = self.source_view_list[(item % (len(self.target_view_diff) * len(self.source_view_list))) // len(self.target_view_diff)]
         target_view_id_ind = (item % (len(self.target_view_diff) * len(self.source_view_list))) % len(self.target_view_diff)

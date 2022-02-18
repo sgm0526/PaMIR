@@ -264,7 +264,7 @@ if __name__ == '__main__':
     #                                pretrained_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
     #                                pretrained_gcmr_checkpoint='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/attention_ablation/nerf_flowvr_0215_maskloss_/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/attention_ablation/nerf_flowvr_0216data_maskloss_/checkpoints/latest.pt'
 
     # main_test_texture(output_dir,
     #                   output_dir,
@@ -272,7 +272,7 @@ if __name__ == '__main__':
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
 
     main_test_flow_feature(
-                      '/home/nas1_temp/dataset/Thuman/output_stage1/nerf_flowvr_0215_maskloss_',
+                      '/home/nas1_temp/dataset/Thuman/output_stage1/nerf_flowvr_0216data_maskloss_',
                       pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
                       pretrained_checkpoint_pamirtex=texture_model_dir)
 
