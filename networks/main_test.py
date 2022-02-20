@@ -297,7 +297,7 @@ def validation(pretrained_checkpoint_pamir,
             obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                  init_smpl_fname)
 
-            optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
+            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
                         batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
@@ -335,6 +335,12 @@ def validation(pretrained_checkpoint_pamir,
         # save_image
         image_fname = os.path.join(out_dir, model_id + '_src_image.png')
         save_image(batch['img'],  image_fname )
+
+        # save_image
+        image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
+        save_image(nerf_image_before, image_fname)
+        image_fname = os.path.join(out_dir, model_id + '_nerf_image.png')
+        save_image( nerf_image , image_fname)
 
         #save .obj
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')

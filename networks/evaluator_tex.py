@@ -432,7 +432,10 @@ class EvaluatorTex(object):
         betas_new = torch.nn.Parameter(betas)
         theta_orig = theta_new.clone().detach()
         betas_orig = betas_new.clone().detach()
-        optm = torch.optim.Adam(params=(theta_new,betas_new), lr=2e-3)
+        optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
+
+        nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
+                                                                   torch.ones(img.shape[0]).cuda() * 0)
 
 
         for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
@@ -443,7 +446,10 @@ class EvaluatorTex(object):
             vol = self.voxelization(vert_tetsmpl_new_cam.detach())
             pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
             #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
-            pred_vert_new_proj =self.project_points(pred_vert_new_cam, cam_f, cam_c, cam_tz)
+            pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
+
+
+
             smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )[-1]
             #loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
 
@@ -473,16 +479,17 @@ class EvaluatorTex(object):
             sampled_points = points
 
             #sampled_points_proj = self.forward_project_points(sampled_points, cam_r, cam_t, cam_f,2*cam_c)
-            sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
+            sampled_points_proj = self.project_points2(sampled_points, cam_f, cam_c, cam_tz)
             sampled_points = sampled_points.reshape(1, -1, 3)
             sampled_points_proj = sampled_points_proj.reshape(1, -1, 2)
-            #import pdb; pdb.set_trace()
 
             nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net(
                 img, vol, sampled_points, sampled_points_proj)
             all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(1, num_ray, const.num_steps, -1),
                                                    sampled_z_vals, device=self.device, white_back=True)
+
+
 
             #import pdb; pdb.set_trace()
 
@@ -500,8 +507,9 @@ class EvaluatorTex(object):
             print('loss:', loss)
             # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
             #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-
-        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
+        nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,
+                                                                   torch.ones(img.shape[0]).cuda() * 0)
+        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
 
 
     def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
@@ -623,5 +631,14 @@ class EvaluatorTex(object):
         sampled_points_proj[..., 0] = sampled_points_proj[..., 0] * cam_f / sampled_points_proj[..., 2] / (cam_c)
         sampled_points_proj[..., 1] = sampled_points_proj[..., 1] * cam_f / sampled_points_proj[..., 2] / (cam_c)
         sampled_points_proj = sampled_points_proj[..., :2]
+        return sampled_points_proj
+
+    def project_points2(self, sampled_points, cam_f, cam_c, cam_tz):
+        qq = sampled_points[..., 1] * -1
+        ww = sampled_points[..., 2] * -1 + cam_tz
+        ee = sampled_points[..., 0] * cam_f / ww / (cam_c)
+        qq = qq * cam_f / ww / (cam_c)
+        sampled_points_proj = torch.cat([ee[..., None], qq[..., None]], dim=-1)
+
         return sampled_points_proj
 
