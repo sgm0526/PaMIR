@@ -55,6 +55,7 @@ class EvaluatorTex(object):
         # pamir_net
         #self.pamir_net = PamirNet().to(self.device)
         self.pamir_tex_net = TexPamirNetAttention_nerf().to(self.device)
+        self.graph_mesh = Mesh()
 
         self.decoder_output_size = 128
         self.NR = NeuralRenderer_coord().to(self.device)
@@ -167,18 +168,31 @@ class EvaluatorTex(object):
 
                 if const.hierarchical:
                     _, _, _, _, occ = self.pamir_tex_net.forward(img, vol, sampled_points, sampled_points_proj)
-                    occ = occ.reshape(batch_size, num_ray_part, num_steps, -1)
-                    occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
-                    start_index = occ_diff.argmax(dim=2)
-                    end_index = occ_diff.argmax(dim=2) + 1
-                    start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
-                    end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
 
-                    # import pdb; pdb.set_trace()
+                    alphas = occ.reshape(batch_size, num_ray_part, num_steps, -1)
+                    alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
+                    weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1]  # batch, num_ray, 24, 1
 
-                    z_vals_diff = end_z_vals - start_z_vals
-                    line_01 = torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1).cuda()
-                    fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01  # batch, num_ray, 24
+                    sampled_z_vals_mid = 0.5 * (
+                                sampled_z_vals[:, :, :-1] + sampled_z_vals[:, :, 1:])  # batch, num_ray, 23, 1
+                    fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1, num_steps - 1),
+                                             weights.reshape(-1, num_steps)[:, 1:-1], num_steps, det=False).detach()
+                    fine_z_vals = fine_z_vals.reshape(batch_size, num_ray_part, num_steps)
+
+
+
+
+                    #occ = occ.reshape(batch_size, num_ray_part, num_steps, -1)
+                    #occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
+                    #start_index = occ_diff.argmax(dim=2)
+                    #end_index = occ_diff.argmax(dim=2) + 1
+                    #start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                    #end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
+
+
+                    #z_vals_diff = end_z_vals - start_z_vals
+                    #line_01 = torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1).cuda()
+                    #fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01  # batch, num_ray, 24
 
                     # std=0.1
                     # max_z_vals = end_z_vals
@@ -223,6 +237,8 @@ class EvaluatorTex(object):
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
             pts_clr_warped.append(pixels_warped.detach().cpu())
+            #pts_clr_pred.append(pixels_pred)
+            #pts_clr_warped.append(pixels_warped)
         ##
         pts_clr_pred= torch.cat(pts_clr_pred, dim=1)
         pts_clr_pred = pts_clr_pred.permute(0,2,1).reshape(batch_size, 3, img_size,img_size)
@@ -390,6 +406,102 @@ class EvaluatorTex(object):
 
         return tex_final
 
+    def optm_smpl_param(self, img, betas, pose, scale, trans, iter_num):
+        assert iter_num > 0
+        self.pamir_tex_net.eval()
+
+        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
+        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
+
+        # convert rotmat to theta
+
+        if pose.ndimension() ==2 :
+            theta = pose
+        else:
+            rotmat_host = pose.detach().cpu().numpy().squeeze()
+            theta_host = []
+            for r in rotmat_host:
+                theta_host.append(cv.Rodrigues(r)[0])
+            theta_host = np.asarray(theta_host).reshape((1, -1))
+            theta = torch.from_numpy(theta_host).to(self.device)
+
+        # construct parameters
+
+        theta_new = torch.nn.Parameter(theta)
+        betas_new = torch.nn.Parameter(betas)
+        theta_orig = theta_new.clone().detach()
+        betas_orig = betas_new.clone().detach()
+        optm = torch.optim.Adam(params=(theta_new,betas_new), lr=2e-3)
+
+
+        for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
+            theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
+            vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
+            vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
+
+            vol = self.voxelization(vert_tetsmpl_new_cam.detach())
+            pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
+            #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
+            pred_vert_new_proj =self.project_points(pred_vert_new_cam, cam_f, cam_c, cam_tz)
+            smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )[-1]
+            #loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
+
+
+            # nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans, torch.ones(img.shape[0]).cuda()*0)
+            h_grid = pred_vert_new_proj[:, :, 0].view(1, pred_vert_new_proj .size(1), 1, 1)
+            v_grid = pred_vert_new_proj[:, :, 1].view(1, pred_vert_new_proj .size(1), 1, 1)
+            grid_2d = torch.cat([h_grid, v_grid], dim=-1)
+            gt_clr_nerf = F.grid_sample(input=img.to(self.device), grid=grid_2d.to(self.device),
+                                        align_corners=False, mode='bilinear', padding_mode='border').permute(0, 2, 3,
+                                                                                                             1).squeeze(
+                2)  # b,5000,3
+
+            ray_d_target = pred_vert_new_cam - cam_t
+            ray_d_target = normalize_vecs(ray_d_target)
+            z_vals_ = torch.linspace(const.ray_start, const.ray_end, const.num_steps, device=self.device).reshape(1, 1,
+                                                                                                                  const.num_steps,
+                                                                                                                  1).repeat(1, pred_vert_new_cam.size(1), 1, 1)
+
+            points = ray_d_target.unsqueeze(2).repeat(1, 1, const.num_steps, 1) * z_vals_
+            # points = points.reshape(1, -1, 3)
+            points = points + cam_t  # target view!!
+
+
+            num_ray = points.size(1)
+            sampled_z_vals = z_vals_
+            sampled_points = points
+
+            #sampled_points_proj = self.forward_project_points(sampled_points, cam_r, cam_t, cam_f,2*cam_c)
+            sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
+            sampled_points = sampled_points.reshape(1, -1, 3)
+            sampled_points_proj = sampled_points_proj.reshape(1, -1, 2)
+            #import pdb; pdb.set_trace()
+
+            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net(
+                img, vol, sampled_points, sampled_points_proj)
+            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+            pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(1, num_ray, const.num_steps, -1),
+                                                   sampled_z_vals, device=self.device, white_back=True)
+
+            #import pdb; pdb.set_trace()
+
+
+            loss_fitting = nn.L1Loss()(pixels_pred, gt_clr_nerf ) #+  nn.L1Loss()(img, gt_clr_nerf )
+            #loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
+            #            torch.mean((betas_orig - betas_new) ** 2) * 0.01
+
+
+            loss = loss_fitting * 1.0 #+ loss_bias * 1.0
+
+            optm.zero_grad()
+            loss.backward()
+            optm.step()
+            print('loss:', loss)
+            # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
+            #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
+
+        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
 
 
     def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):

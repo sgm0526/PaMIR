@@ -245,13 +245,15 @@ def get_chamfer_dist(tgt_mesh , src_mesh): #tgt_meshname , meshname):
 
     return chamfer_dist
 
+
 from torch.utils.data import DataLoader
 import constant as const
 from skimage import measure
 import numpy as np
 import mrcfile
+from torchvision.utils import save_image
 def validation(pretrained_checkpoint_pamir,
-                      pretrained_checkpoint_pamirtex):
+                      pretrained_checkpoint_pamirtex, iternum=50):
     from evaluator_tex import EvaluatorTex
     from evaluator import Evaluator
     from dataloader.dataloader_tex import TrainingImgDataset
@@ -273,15 +275,40 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nerf_gcmr_debug/'
+        os.makedirs(out_dir, exist_ok=True)
+        model_id = str(501 + batch['model_id'].item()).zfill(4)
+        print(model_id)
 
         vol_res = 128
-        val_pretrained= False
+
 
         use_gcmr= True
         if use_gcmr :
             pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
-            betas = pred_betas
-            pose = pred_rotmat
+            pred_smpl = scale * pred_smpl + trans
+
+            ##optimization with nerf
+
+            smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+                util.read_smpl_constants('./data')
+
+            init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl.obj')
+            obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                 init_smpl_fname)
+
+            optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
+                        batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+
+            optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
+            obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                optm_smpl_fname)
+            #import pdb; pdb.set_trace()
+
+            ##optimization end
+
+            betas =optm_betas
+            pose = optm_thetas
 
         else:
             betas= batch['betas']
@@ -289,6 +316,10 @@ def validation(pretrained_checkpoint_pamir,
             scale = batch['scale']
             trans = batch['trans']
 
+            #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
+            #        batch['img'], betas, pose , scale, trans, iternum)
+
+        val_pretrained = False
         if val_pretrained:
             mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
 
@@ -301,12 +332,9 @@ def validation(pretrained_checkpoint_pamir,
             mesh['f'] = simplices[:, (1, 0, 2)]
             mesh['vn'] = normals
 
-
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nonerf_gcmr1/'
-        os.makedirs(out_dir, exist_ok=True)
-        model_id = str(501+batch['model_id'].item()).zfill(4)
-        print(model_id)
-
+        # save_image
+        image_fname = os.path.join(out_dir, model_id + '_src_image.png')
+        save_image(batch['img'],  image_fname )
 
         #save .obj
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
@@ -362,11 +390,11 @@ if __name__ == '__main__':
     # output_dir = './results/test_data_rendered/'
 
     geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_nonerf_occ/checkpoints/latest.pt'
 
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
+    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr_onlynerf_/checkpoints/latest.pt'
 
     validation(geometry_model_dir , texture_model_dir)

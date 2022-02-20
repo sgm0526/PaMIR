@@ -74,7 +74,7 @@ class Trainer(BaseTrainer):
 
         # neural renderer
 
-        self.UseGCMR= True
+        self.UseGCMR=False
         self.depthaware = False
         if self.UseGCMR:
 
@@ -345,20 +345,27 @@ class Trainer(BaseTrainer):
         if const.hierarchical:
             with torch.no_grad():
                 #import pdb; pdb.set_trace()
-                _,_,_,_, occ= self.pamir_tex_net.forward( img, vol, sampled_points, sampled_points_proj)
-                occ =occ.reshape(batch_size, num_ray, num_steps, -1)
-                occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
-                start_index = occ_diff.argmax(dim=2)
-                end_index = occ_diff.argmax(dim=2) + 1
-                start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
-                end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
+                _,_,_,_,occ= self.pamir_tex_net.forward( img, vol, sampled_points, sampled_points_proj)
 
-                #import pdb; pdb.set_trace()
+                alphas = occ.reshape(batch_size, num_ray, num_steps, -1)
+                alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
+                weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1]  #batch, num_ray, 24, 1   + 1e-5
 
-                z_vals_diff = end_z_vals - start_z_vals
-                line_01= torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray, 1).cuda()
-                fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01 #batch, num_ray, 24
+                sampled_z_vals_mid = 0.5 * (sampled_z_vals[:, :,:-1] + sampled_z_vals[:, :, 1:])  #batch, num_ray, 23, 1
+                fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1,num_steps-1), weights.reshape(-1,num_steps)[:,1:-1], num_steps, det=False).detach()
+                fine_z_vals = fine_z_vals.reshape(batch_size,num_ray, num_steps)
 
+
+                #occ =occ.reshape(batch_size, num_ray, num_steps, -1)
+                #occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
+                #start_index = occ_diff.argmax(dim=2)
+                #end_index = occ_diff.argmax(dim=2) + 1
+                #start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                #end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
+
+                #z_vals_diff = end_z_vals - start_z_vals
+                #line_01= torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray, 1).cuda()
+                #fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01 #batch, num_ray, 24
 
                 #std=0.1
                 #max_z_vals = end_z_vals
