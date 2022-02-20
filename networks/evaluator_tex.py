@@ -166,17 +166,24 @@ class EvaluatorTex(object):
                 # img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
 
                 if const.hierarchical:
-                    # import pdb; pdb.set_trace()
                     _, _, _, _, occ = self.pamir_tex_net.forward(img, vol, sampled_points, sampled_points_proj)
-                    #import pdb; pdb.set_trace()
                     occ = occ.reshape(batch_size, num_ray_part, num_steps, -1)
                     occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
-                    max_index = occ_diff.argmax(dim=2) + 1
-                    max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+                    start_index = occ_diff.argmax(dim=2)
+                    end_index = occ_diff.argmax(dim=2) + 1
+                    start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                    end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
 
-                    std = 0.1
-                    std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1)
-                    fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+                    # import pdb; pdb.set_trace()
+
+                    z_vals_diff = end_z_vals - start_z_vals
+                    line_01 = torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1).cuda()
+                    fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01  # batch, num_ray, 24
+
+                    # std=0.1
+                    # max_z_vals = end_z_vals
+                    # std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
+                    # fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
 
                     sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                     fine_points = sampled_rays_d_world * fine_z_vals[..., None]
@@ -184,7 +191,7 @@ class EvaluatorTex(object):
                     fine_points = self.rotate_points(fine_points, view_diff)
                     fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
 
-                    all_points = torch.cat([sampled_points.reshape(batch_size,num_ray_part, num_steps, 3), fine_points],
+                    all_points = torch.cat([sampled_points.reshape(batch_size, num_ray_part, num_steps, 3), fine_points],
                                            dim=2)
                     all_points_proj = torch.cat(
                         [sampled_points_proj.reshape(batch_size, num_ray_part, num_steps, 2), fine_points_proj], dim=2)

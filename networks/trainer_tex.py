@@ -74,21 +74,27 @@ class Trainer(BaseTrainer):
 
         # neural renderer
 
-        self.UseGCMR= False
+        self.UseGCMR= True
         self.depthaware = False
         if self.UseGCMR:
+
             self.graph_mesh = Mesh()
             self.graph_cnn = GraphCNN(self.graph_mesh.adjmat, self.graph_mesh.ref_vertices.t(),
                                       const.cmr_num_layers, const.cmr_num_channels).to(self.device)
             self.smpl_param_regressor = SMPLParamRegressor().to(self.device)
 
             self.load_pretrained_gcmr(self.options.pretrained_gcmr_checkpoint)
+            self.img_norm = ImgNormalizerForResnet().to(self.device)
 
 
         # optimizers
         self.optm_pamir_tex_net = torch.optim.Adam(
             params=list(self.pamir_tex_net.parameters()), lr=float(self.options.lr)
         )
+        #self.optm_pamir_tex_net = torch.optim.Adam(
+        #    params=[{'params': self.pamir_tex_net.parameters()}, {'params': self.graph_cnn.parameters()}, {'params': self.smpl_param_regressor.parameters()}],
+        #    lr=float(self.options.lr)
+        #)
 
         # loses
         self.criterion_geo = nn.MSELoss().to(self.device)
@@ -237,6 +243,8 @@ class Trainer(BaseTrainer):
         _, _, _, _, output_sdf_out = self.pamir_tex_net.forward(img, vol, pts_occ_out, pts_occ_proj_out)
         losses['geo_out'] = self.geo_loss(output_sdf_out, gt_ov_out)
         #self.loss_weights['geo'] =0
+        #self.loss_weights['geo_in'] =0
+        #self.loss_weights['geo_out'] =0
 
         ## 2 train tex loss
 
@@ -248,6 +256,10 @@ class Trainer(BaseTrainer):
         losses['att'] = self.attention_loss(output_att)
         #self.loss_weights['tex'] = 0
         #self.loss_weights['tex_final'] = 0
+        #input_grad = torch.autograd.grad(torch.sum(output_sigma ), pts, create_graph=torch.is_grad_enabled())[0]
+        #normal = - input_grad / (torch.norm(input_grad, dim=-1, keepdim=True) + 1e-7)
+        #normal = normal.clamp(min=-1, max=1)
+        #normal[torch.isnan(normal)] = 0.
 
         ## 3 train nerf loss
 
@@ -337,7 +349,6 @@ class Trainer(BaseTrainer):
                 occ =occ.reshape(batch_size, num_ray, num_steps, -1)
                 occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
                 start_index = occ_diff.argmax(dim=2)
-                import pdb; pdb.set_trace()
                 end_index = occ_diff.argmax(dim=2) + 1
                 start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
                 end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
@@ -346,7 +357,7 @@ class Trainer(BaseTrainer):
 
                 z_vals_diff = end_z_vals - start_z_vals
                 line_01= torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray, 1).cuda()
-                fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) *line_01 #batch, num_ray, 24
+                fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01 #batch, num_ray, 24
 
 
                 #std=0.1
@@ -396,6 +407,13 @@ class Trainer(BaseTrainer):
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
         #self.loss_weights['nerf_tex'] =0
         #self.loss_weights['nerf_tex_final'] =0
+
+
+        losses['nerf_opacity'] =  torch.mean(
+                torch.log(0.1 + nerf_output_sigma.view(nerf_output_sigma.size(0), -1)) +
+                torch.log(0.1 + 1. - nerf_output_sigma.view(nerf_output_sigma.size(0), -1)) + 2.20727
+            )
+        self.loss_weights['nerf_opacity'] =0
 
 
         if self.TrainGAN:
