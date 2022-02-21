@@ -341,37 +341,19 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
+        nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+            img, vol,  sampled_points, sampled_points_proj)
+
 
         if const.hierarchical:
             with torch.no_grad():
-                #import pdb; pdb.set_trace()
-                _,_,_,_,occ= self.pamir_tex_net.forward( img, vol, sampled_points, sampled_points_proj)
-
-                alphas = occ.reshape(batch_size, num_ray, num_steps, -1)
+                alphas = nerf_output_sigma.reshape(batch_size, num_ray, num_steps, -1)
                 alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
-                weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1]  #batch, num_ray, 24, 1   + 1e-5
+                weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1] + 1e-5 #batch, num_ray, 24, 1
 
                 sampled_z_vals_mid = 0.5 * (sampled_z_vals[:, :,:-1] + sampled_z_vals[:, :, 1:])  #batch, num_ray, 23, 1
                 fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1,num_steps-1), weights.reshape(-1,num_steps)[:,1:-1], num_steps, det=False).detach()
                 fine_z_vals = fine_z_vals.reshape(batch_size,num_ray, num_steps)
-
-
-                #occ =occ.reshape(batch_size, num_ray, num_steps, -1)
-                #occ_diff = occ[:, :, 1:] - occ[:, :, :-1]
-                #start_index = occ_diff.argmax(dim=2)
-                #end_index = occ_diff.argmax(dim=2) + 1
-                #start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
-                #end_z_vals = torch.gather(sampled_z_vals, 2, end_index.unsqueeze(-1))
-
-                #z_vals_diff = end_z_vals - start_z_vals
-                #line_01= torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray, 1).cuda()
-                #fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01 #batch, num_ray, 24
-
-                #std=0.1
-                #max_z_vals = end_z_vals
-                #std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
-                #fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
-
 
                 sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                 fine_points = sampled_rays_d_world * fine_z_vals[..., None]
@@ -379,36 +361,29 @@ class Trainer(BaseTrainer):
                 fine_points = self.rotate_points(fine_points, view_diff)
                 fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
 
-                all_points = torch.cat([sampled_points.reshape(batch_size, num_ray, num_steps, 3), fine_points], dim=2)
-                all_points_proj = torch.cat([sampled_points_proj.reshape(batch_size, num_ray, num_steps, 2),fine_points_proj], dim=2)
+
                 all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
-
                 _, indices = torch.sort(all_z_vals, dim=2)
-                all_z_vals = torch.gather(all_z_vals, 2, indices)
-                all_points = torch.gather(all_points, 2, indices.expand(-1, -1, -1, 3)).reshape(batch_size, num_ray * num_steps * 2, 3)
-                all_points_proj = torch.gather(all_points_proj, 2, indices.expand(-1, -1, -1, 2)).reshape(batch_size, num_ray * num_steps * 2, 2)
 
-                sampled_points = all_points
-                sampled_points_proj = all_points_proj
-                sampled_z_vals = all_z_vals
-                num_steps = num_steps*2
+            nerf_output_clr_fine_,nerf_output_clr_fine,_,_, nerf_output_sigma_fine = self.pamir_tex_net.forward(
+                img, vol, fine_points.reshape(batch_size, num_ray * num_steps , 3), fine_points_proj.reshape(batch_size, num_ray * num_steps, 2) )
 
-                #import pdb; pdb.set_trace()
+            losses['nerf_opacity'] = torch.mean(
+                torch.log(0.1 + nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) +
+                torch.log(0.1 + 1. - nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) + 2.20727
+            )
+            nerf_output_clr_ = torch.gather(torch.cat([nerf_output_clr_.reshape(batch_size, num_ray, num_steps, 3), nerf_output_clr_fine_.reshape(batch_size, num_ray, num_steps, 3)], dim=2), 2, indices.expand(-1, -1, -1, 3))
+            nerf_output_clr = torch.gather(torch.cat([nerf_output_clr.reshape(batch_size, num_ray, num_steps, 3), nerf_output_clr_fine.reshape(batch_size, num_ray, num_steps, 3)], dim=2), 2, indices.expand(-1, -1, -1, 3))
+            nerf_output_sigma = torch.gather(torch.cat([nerf_output_sigma.reshape(batch_size, num_ray, num_steps, 1), nerf_output_sigma_fine.reshape(batch_size, num_ray, num_steps, 1)], dim=2), 2, indices)
+            sampled_z_vals = torch.gather(all_z_vals, 2, indices)
 
-
-
-        nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
-            img, vol, sampled_points, sampled_points_proj)
 
 
         all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-        pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                               sampled_z_vals, device=self.device, white_back=True)
+        pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=True)
 
         all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-        feature_pred, _, _ = fancy_integration2(all_outputs.reshape(batch_size, num_ray, num_steps, -1),
-                                                sampled_z_vals, device=self.device, white_back=True)
-
+        feature_pred, _, _ = fancy_integration2(all_outputs,  sampled_z_vals, device=self.device, white_back=True)
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
@@ -416,11 +391,7 @@ class Trainer(BaseTrainer):
         #self.loss_weights['nerf_tex_final'] =0
 
 
-        losses['nerf_opacity'] =  torch.mean(
-                torch.log(0.1 + nerf_output_sigma.view(nerf_output_sigma.size(0), -1)) +
-                torch.log(0.1 + 1. - nerf_output_sigma.view(nerf_output_sigma.size(0), -1)) + 2.20727
-            )
-        #self.loss_weights['nerf_opacity'] =0
+
 
 
         if self.TrainGAN:
