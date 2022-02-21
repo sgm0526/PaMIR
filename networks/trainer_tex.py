@@ -372,6 +372,7 @@ class Trainer(BaseTrainer):
                 torch.log(0.1 + nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) +
                 torch.log(0.1 + 1. - nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) + 2.20727
             )
+            self.loss_weights['nerf_opacity'] = 0
             nerf_output_clr_ = torch.gather(torch.cat([nerf_output_clr_.reshape(batch_size, num_ray, num_steps, 3), nerf_output_clr_fine_.reshape(batch_size, num_ray, num_steps, 3)], dim=2), 2, indices.expand(-1, -1, -1, 3))
             nerf_output_clr = torch.gather(torch.cat([nerf_output_clr.reshape(batch_size, num_ray, num_steps, 3), nerf_output_clr_fine.reshape(batch_size, num_ray, num_steps, 3)], dim=2), 2, indices.expand(-1, -1, -1, 3))
             nerf_output_sigma = torch.gather(torch.cat([nerf_output_sigma.reshape(batch_size, num_ray, num_steps, 1), nerf_output_sigma_fine.reshape(batch_size, num_ray, num_steps, 1)], dim=2), 2, indices)
