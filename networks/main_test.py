@@ -283,7 +283,7 @@ def validation(pretrained_checkpoint_pamir,
         vol_res = 128
 
 
-        use_gcmr= True
+        use_gcmr= False
         if use_gcmr :
             pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
             pred_smpl = scale * pred_smpl + trans
@@ -306,6 +306,12 @@ def validation(pretrained_checkpoint_pamir,
             #import pdb; pdb.set_trace()
 
             ##optimization end
+            # save_image
+            image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
+            save_image(nerf_image_before, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_nerf_image.png')
+            save_image(nerf_image, image_fname)
+
 
             betas =optm_betas
             pose = optm_thetas
@@ -319,7 +325,7 @@ def validation(pretrained_checkpoint_pamir,
             #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
             #        batch['img'], betas, pose , scale, trans, iternum)
 
-        val_pretrained = False
+        val_pretrained = True
         if val_pretrained:
             mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
 
@@ -336,11 +342,7 @@ def validation(pretrained_checkpoint_pamir,
         image_fname = os.path.join(out_dir, model_id + '_src_image.png')
         save_image(batch['img'],  image_fname )
 
-        # save_image
-        image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
-        save_image(nerf_image_before, image_fname)
-        image_fname = os.path.join(out_dir, model_id + '_nerf_image.png')
-        save_image( nerf_image , image_fname)
+
 
         #save .obj
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
@@ -395,10 +397,11 @@ if __name__ == '__main__':
     # input_image_dir = './results/test_data_rendered/'
     # output_dir = './results/test_data_rendered/'
 
-    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
+    #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
+    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_nonerf_occ/checkpoints/latest.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr_no3dfeat_nope/checkpoints/latest.pt'
+    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr_no3dfeat_nope/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr_onlynerf_/checkpoints/latest.pt'
