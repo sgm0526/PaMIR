@@ -545,8 +545,8 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_3D = 32
         self.feat_ch_out = 3 + 1+ 1 #+1
         self.feat_ch_occupancy = 128
-        self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
-        #self.add_module('cg', hg2.HourglassNet(3+2 ,2, 3, 128, self.feat_ch_2D))
+        #self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
+        self.add_module('cg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
@@ -569,12 +569,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         """
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
-
-        _2d_grid = self.generate_2d_grids(img.shape[2])
-        _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
-                   [1, 0], :, :]
-        img_gridconcat = torch.cat([img, _2d_grid], 1)
-        img_feat_tex = self.cg( img_gridconcat)#[-1]
+        img_feat_tex = self.cg(img)[-1]
         img_feat = img_feat_tex#torch.cat([img_feat_tex, img_feat_geo], dim=1)
 
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
