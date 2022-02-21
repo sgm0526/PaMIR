@@ -406,7 +406,7 @@ class EvaluatorTex(object):
 
         return tex_final
 
-    def optm_smpl_param(self, img, betas, pose, scale, trans, iter_num):
+    def optm_smpl_param(self, img, mask, betas, pose, scale, trans, iter_num):
         assert iter_num > 0
         self.pamir_tex_net.eval()
 
@@ -434,6 +434,13 @@ class EvaluatorTex(object):
         betas_orig = betas_new.clone().detach()
         optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
 
+        vert_cam = scale * self.tet_smpl(theta, betas) + trans
+        vol = self.voxelization(vert_cam)
+        vert_cam = vert_cam[:, :6890]
+        vert_cam_proj = self.project_points2(vert_cam, cam_f, cam_c, cam_tz)
+        _, _, att_orig, _, smpl_sdf = self.pamir_tex_net(img, vol, vert_cam ,  vert_cam_proj)
+
+
         nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
                                                                    torch.ones(img.shape[0]).cuda() * 0)
 
@@ -445,13 +452,17 @@ class EvaluatorTex(object):
 
             vol = self.voxelization(vert_tetsmpl_new_cam.detach())
             pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
+            #pred_vert_new_cam = vert_tetsmpl_new_cam[:, :6890]
+            #pred_vert_new_cam = pred_vert_new_cam+torch.normal(0, 0.1, size=pred_vert_new_cam.shape).cuda()
+
+
             #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
             pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
 
 
 
-            smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )[-1]
-            #loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
+            _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
+            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
 
 
             # nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans, torch.ones(img.shape[0]).cuda()*0)
@@ -462,6 +473,12 @@ class EvaluatorTex(object):
                                         align_corners=False, mode='bilinear', padding_mode='border').permute(0, 2, 3,
                                                                                                              1).squeeze(
                 2)  # b,5000,3
+
+            proj_mask = F.grid_sample(input=mask.permute(0, 3, 1, 2).to(self.device), grid=grid_2d.to(self.device),
+                                      align_corners=False, mode='bilinear', padding_mode='border').permute(0, 2, 3,
+                                                                                                           1).squeeze(
+                2)  # b,5000,3
+            loss_mask = nn.MSELoss()(torch.ones_like(proj_mask, device='cuda'), proj_mask)
 
             ray_d_target = pred_vert_new_cam - cam_t
             ray_d_target = normalize_vecs(ray_d_target)
@@ -487,24 +504,27 @@ class EvaluatorTex(object):
                 img, vol, sampled_points, sampled_points_proj)
             all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
             pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(1, num_ray, const.num_steps, -1),
-                                                   sampled_z_vals, device=self.device, white_back=True)
+                                                   sampled_z_vals, device=self.device, white_back=False)# white_back=True)
 
 
 
             #import pdb; pdb.set_trace()
 
 
-            loss_fitting = nn.L1Loss()(pixels_pred, gt_clr_nerf ) #+  nn.L1Loss()(img, gt_clr_nerf )
-            #loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
-            #            torch.mean((betas_orig - betas_new) ** 2) * 0.01
+            loss_nerf = nn.L1Loss()(pixels_pred, gt_clr_nerf ) #+  nn.L1Loss()(img, gt_clr_nerf )
+            #loss_att = torch.mean((att - att_orig.detach()) ** 2)
 
+            loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
+                        torch.mean((betas_orig - betas_new) ** 2) * 0.01
 
-            loss = loss_fitting * 1.0 #+ loss_bias * 1.0
+            loss = loss_fitting  + loss_nerf  #loss_fitting * 1.0 +loss_nerf #+ 10*loss_bias
+            #loss = loss_nerf +loss_mask#+ 10*loss_bias #loss_fitting * 1.0 +loss_nerf * 1.0#+ loss_bias * 1.0
 
             optm.zero_grad()
             loss.backward()
             optm.step()
             print('loss:', loss)
+
             # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
             #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
         nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,

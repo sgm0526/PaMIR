@@ -420,7 +420,7 @@ class Trainer(BaseTrainer):
                 torch.log(0.1 + nerf_output_sigma.view(nerf_output_sigma.size(0), -1)) +
                 torch.log(0.1 + 1. - nerf_output_sigma.view(nerf_output_sigma.size(0), -1)) + 2.20727
             )
-        self.loss_weights['nerf_opacity'] =0
+        #self.loss_weights['nerf_opacity'] =0
 
 
         if self.TrainGAN:
