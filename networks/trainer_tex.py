@@ -474,12 +474,8 @@ class Trainer(BaseTrainer):
     ## from
     def geo_loss(self, pred_ov, gt_ov):
         """Computes per-sample loss of the occupancy value"""
-        if self.options.use_multistage_loss:
-            loss = 0
-            for o in pred_ov:
-                loss += self.criterion_geo(o, gt_ov)
-        else:
-            loss = self.criterion_geo(pred_ov[-1], gt_ov)
+        loss = self.criterion_geo(pred_ov, gt_ov)
+
         return loss
     def forward_gcmr(self, img):
         # GraphCMR forward
