@@ -165,6 +165,9 @@ class EvaluatorTex(object):
 
                 nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, sampled_points, sampled_points_proj)
+                nerf_output_clr_=nerf_output_clr_[-1]
+                nerf_output_clr = nerf_output_clr[-1]
+                nerf_output_sigma = nerf_output_sigma[-1]
 
                 if const.hierarchical:
                     with torch.no_grad():
@@ -193,6 +196,9 @@ class EvaluatorTex(object):
                     nerf_output_clr_fine_, nerf_output_clr_fine, _, _, nerf_output_sigma_fine = self.pamir_tex_net.forward(
                         img, vol, fine_points.reshape(batch_size, num_ray_part  * num_steps, 3),
                         fine_points_proj.reshape(batch_size, num_ray_part  * num_steps, 2))
+                    nerf_output_clr_fine_ = nerf_output_clr_fine_[-1]
+                    nerf_output_clr_fine = nerf_output_clr_fine[-1]
+                    nerf_output_sigma_fine = nerf_output_sigma_fine[-1]
 
                     nerf_output_clr_ = torch.gather(torch.cat(
                         [nerf_output_clr_.reshape(batch_size, num_ray_part, num_steps, 3),

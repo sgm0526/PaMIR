@@ -289,7 +289,7 @@ class Trainer(BaseTrainer):
 
         if True:
             # import pdb; pdb.set_trace()
-            ray_index = np.random.randint(0, pts_num, 1000)
+            ray_index = np.random.randint(0, pts_num, 500)
             pts_world =input_batch['pts_world'][:, ray_index]
 
             pts_target = self.rotate_points(pts_world, input_batch['target_view_id'])
@@ -319,7 +319,7 @@ class Trainer(BaseTrainer):
             sampled_rays_d_world = ray_d_target
 
             ###
-            ray_index = np.random.randint(0, img_size * img_size, 1000)
+            ray_index = np.random.randint(0, img_size * img_size, 500)
             sampled_points_random = points_cam_source[:, ray_index]
             #sampled_points_global_random = points_cam_global[:, ray_index]
             sampled_z_vals_random = z_vals[:, ray_index]
@@ -327,7 +327,7 @@ class Trainer(BaseTrainer):
             gt_clr_nerf_random = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
 
             ##
-            num_ray = num_ray + 1000
+            num_ray = num_ray + 500
             sampled_points = torch.cat([sampled_points, sampled_points_random], 1)
             #sampled_points_global = torch.cat([sampled_points_global, sampled_points_global_random], 1)
             sampled_z_vals = torch.cat([sampled_z_vals, sampled_z_vals_random], 1)
@@ -341,13 +341,13 @@ class Trainer(BaseTrainer):
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
-        nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+        list_nerf_output_clr_, list_nerf_output_clr, _, _, list_nerf_output_sigma = self.pamir_tex_net.forward(
             img, vol,  sampled_points, sampled_points_proj)
 
 
         if const.hierarchical:
             with torch.no_grad():
-                alphas = nerf_output_sigma.reshape(batch_size, num_ray, num_steps, -1)
+                alphas = list_nerf_output_sigma[-1].reshape(batch_size, num_ray, num_steps, -1)
                 alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
                 weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :, :-1] + 1e-5 #batch, num_ray, 24, 1
 
@@ -365,32 +365,34 @@ class Trainer(BaseTrainer):
                 all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
                 _, indices = torch.sort(all_z_vals, dim=2)
 
-            nerf_output_clr_fine_,nerf_output_clr_fine,_,_, nerf_output_sigma_fine = self.pamir_tex_net.forward(
+            list_nerf_output_clr_fine_,list_nerf_output_clr_fine,_,_, list_nerf_output_sigma_fine = self.pamir_tex_net.forward(
                 img, vol, fine_points.reshape(batch_size, num_ray * num_steps , 3), fine_points_proj.reshape(batch_size, num_ray * num_steps, 2) )
 
-            losses['nerf_opacity'] = torch.mean(
-                torch.log(0.1 + nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) +
-                torch.log(0.1 + 1. - nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) + 2.20727
-            )
-            self.loss_weights['nerf_opacity'] = 0
-            nerf_output_clr_ = torch.gather(torch.cat([nerf_output_clr_.reshape(batch_size, num_ray, num_steps, 3), nerf_output_clr_fine_.reshape(batch_size, num_ray, num_steps, 3)], dim=2), 2, indices.expand(-1, -1, -1, 3))
-            nerf_output_clr = torch.gather(torch.cat([nerf_output_clr.reshape(batch_size, num_ray, num_steps, 3), nerf_output_clr_fine.reshape(batch_size, num_ray, num_steps, 3)], dim=2), 2, indices.expand(-1, -1, -1, 3))
-            nerf_output_sigma = torch.gather(torch.cat([nerf_output_sigma.reshape(batch_size, num_ray, num_steps, 1), nerf_output_sigma_fine.reshape(batch_size, num_ray, num_steps, 1)], dim=2), 2, indices)
-            sampled_z_vals = torch.gather(all_z_vals, 2, indices)
+            losses['nerf_tex']=0
+            losses['nerf_tex_final']=0
+            for nerf_output_clr_, nerf_output_clr, nerf_output_sigma,nerf_output_clr_fine_, nerf_output_clr_fine, nerf_output_sigma_fine in zip(list_nerf_output_clr_, list_nerf_output_clr, list_nerf_output_sigma,list_nerf_output_clr_fine_, list_nerf_output_clr_fine, list_nerf_output_sigma_fine):
+                nerf_output_clr_ = torch.gather(torch.cat([nerf_output_clr_.reshape(batch_size, num_ray, num_steps, 3),
+                                                           nerf_output_clr_fine_.reshape(batch_size, num_ray, num_steps,
+                                                                                         3)], dim=2), 2,
+                                                indices.expand(-1, -1, -1, 3))
+                nerf_output_clr = torch.gather(torch.cat([nerf_output_clr.reshape(batch_size, num_ray, num_steps, 3),
+                                                          nerf_output_clr_fine.reshape(batch_size, num_ray, num_steps,
+                                                                                       3)], dim=2), 2,
+                                               indices.expand(-1, -1, -1, 3))
+                nerf_output_sigma = torch.gather(torch.cat(
+                    [nerf_output_sigma.reshape(batch_size, num_ray, num_steps, 1),
+                     nerf_output_sigma_fine.reshape(batch_size, num_ray, num_steps, 1)], dim=2), 2, indices)
+                sampled_z_vals = torch.gather(all_z_vals, 2, indices)
 
+                all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
+                pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=True)
 
+                all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+                feature_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
+                                                        white_back=True)
 
-        all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-        pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=True)
-
-        all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-        feature_pred, _, _ = fancy_integration2(all_outputs,  sampled_z_vals, device=self.device, white_back=True)
-
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
-        losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
-        #self.loss_weights['nerf_tex'] =0
-        #self.loss_weights['nerf_tex_final'] =0
-
+                losses['nerf_tex'] += self.tex_loss(pixels_pred, gt_clr_nerf)
+                losses['nerf_tex_final'] += self.tex_loss(feature_pred, gt_clr_nerf)
 
 
 
@@ -477,6 +479,7 @@ class Trainer(BaseTrainer):
         if self.options.use_multistage_loss:
             loss = 0
             for o in pred_ov:
+                import pdb; pdb.set_trace()
                 loss += self.criterion_geo(o, gt_ov)
         else:
             loss = self.criterion_geo(pred_ov[-1], gt_ov)
@@ -559,12 +562,27 @@ class Trainer(BaseTrainer):
             att = torch.ones_like(gt_clr)
         if len(att.size()) != len(gt_clr.size()):
             att = att.unsqueeze(0)
-        loss = self.criterion_tex(pred_clr * att, gt_clr * att)
+
+        if self.options.use_multistage_loss:
+            loss = 0
+            for o in pred_clr:
+                loss += self.criterion_tex(o * att, gt_clr * att)
+        else:
+            loss = self.criterion_tex(pred_clr[-1] * att, gt_clr * att)
+
         return loss
 
     def attention_loss(self, pred_att):
-        return torch.mean(-torch.log(pred_att + 1e-4))
-        # return torch.mean((pred_att - 0.9) ** 2)
+
+        if self.options.use_multistage_loss:
+            loss = 0
+            for o in pred_att:
+                loss += torch.mean(-torch.log(o + 1e-4))
+        else:
+            loss = torch.mean(-torch.log(pred_att[-1] + 1e-4))
+
+        return loss
+
 
     def train_summaries(self, input_batch, losses=None):
         assert losses is not None
