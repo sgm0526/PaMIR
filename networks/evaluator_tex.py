@@ -169,14 +169,18 @@ class EvaluatorTex(object):
                 if const.hierarchical:
                     with torch.no_grad():
                         alphas = nerf_output_sigma.reshape(batch_size, num_ray_part , num_steps, -1)
-                        alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
-                        weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :,
-                                           :-1] + 1e-5  # batch, num_ray, 24, 1
 
-                        sampled_z_vals_mid = 0.5 * (
-                                    sampled_z_vals[:, :, :-1] + sampled_z_vals[:, :, 1:])  # batch, num_ray, 23, 1
-                        fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1, num_steps - 1),
-                                                 weights.reshape(-1, num_steps)[:, 1:-1], num_steps, det=False).detach()
+                        #max_index = abs(alphas - 0.5).argmin(dim=2)
+                        #std = 0.05
+                        #std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size,num_ray_part, 1)
+                        #max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+                        #fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+
+
+                        alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
+                        weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :,:-1] + 1e-5  # batch, num_ray, 24, 1
+                        sampled_z_vals_mid = 0.5 * (  sampled_z_vals[:, :, :-1] + sampled_z_vals[:, :, 1:])  # batch, num_ray, 23, 1
+                        fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1, num_steps - 1),   weights.reshape(-1, num_steps)[:, 1:-1], num_steps, det=False).detach()
                         fine_z_vals = fine_z_vals.reshape(batch_size, num_ray_part , num_steps)
 
                         sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
@@ -487,8 +491,6 @@ class EvaluatorTex(object):
 
 
 
-            #import pdb; pdb.set_trace()
-
 
             loss_nerf = nn.L1Loss()(pixels_pred, gt_clr_nerf ) #+  nn.L1Loss()(img, gt_clr_nerf )
             #loss_att = torch.mean((att - att_orig.detach()) ** 2)
@@ -496,7 +498,7 @@ class EvaluatorTex(object):
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
 
-            loss = loss_fitting  + loss_nerf  #loss_fitting * 1.0 +loss_nerf #+ 10*loss_bias
+            loss = loss_fitting  #+ loss_nerf  #loss_fitting * 1.0 +loss_nerf #+ 10*loss_bias
             #loss = loss_nerf +loss_mask#+ 10*loss_bias #loss_fitting * 1.0 +loss_nerf * 1.0#+ loss_bias * 1.0
 
             optm.zero_grad()
