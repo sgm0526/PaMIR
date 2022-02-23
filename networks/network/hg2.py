@@ -135,14 +135,14 @@ class Hourglass(BaseNetwork):
 
 
 class HourglassNet(BaseNetwork):
-    def __init__(self, input_dim, nStack, nModules, nFeats, numOutput):
+    def __init__(self, nStack, nModules, nFeats, numOutput):
         super(HourglassNet, self).__init__()
         self.nStack = nStack
         self.nModules = nModules
         self.nFeats = nFeats
         self.numOutput = numOutput
 
-        self.conv1_ = nn.Conv2d(input_dim, 64, bias=True, kernel_size=7, stride=2, padding=3)
+        self.conv1_ = nn.Conv2d(3, 64, bias=True, kernel_size=7, stride=2, padding=3)
         self.bn1 = nn.GroupNorm(4, 64)
         self.relu = nn.ReLU(inplace=True)
         self.r1 = Residual(64, 128)
