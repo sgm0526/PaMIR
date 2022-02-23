@@ -171,17 +171,23 @@ class EvaluatorTex(object):
                         alphas = nerf_output_sigma.reshape(batch_size, num_ray_part , num_steps, -1)
 
                         #max_index = abs(alphas - 0.5).argmin(dim=2)
-                        #std = 0.05
-                        #std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size,num_ray_part, 1)
-                        #max_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
-                        #fine_z_vals = max_z_vals.squeeze(-1) + std_line.to(self.device)
+                        sign = (alphas > 0.5).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
+                            batch_size, num_ray_part, 1).to(self.device)
+                        max_index = sign.unsqueeze(-1).argmax(dim=2)
+                        max_index[max_index == 0] += 1
+                        start_index = max_index - 1
+                        start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                        end_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+                        z_vals_diff = end_z_vals - start_z_vals
+                        line_01 = torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1).cuda()
+                        fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01  # batch, num_ray, 24
 
 
-                        alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
-                        weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :,:-1] + 1e-5  # batch, num_ray, 24, 1
-                        sampled_z_vals_mid = 0.5 * (  sampled_z_vals[:, :, :-1] + sampled_z_vals[:, :, 1:])  # batch, num_ray, 23, 1
-                        fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1, num_steps - 1),   weights.reshape(-1, num_steps)[:, 1:-1], num_steps, det=False).detach()
-                        fine_z_vals = fine_z_vals.reshape(batch_size, num_ray_part , num_steps)
+                        #alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
+                        #weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :,:-1] + 1e-5  # batch, num_ray, 24, 1
+                        #sampled_z_vals_mid = 0.5 * (  sampled_z_vals[:, :, :-1] + sampled_z_vals[:, :, 1:])  # batch, num_ray, 23, 1
+                        #fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1, num_steps - 1),   weights.reshape(-1, num_steps)[:, 1:-1], num_steps, det=False).detach()
+                        #fine_z_vals = fine_z_vals.reshape(batch_size, num_ray_part , num_steps)
 
                         sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
                         fine_points = sampled_rays_d_world * fine_z_vals[..., None]
