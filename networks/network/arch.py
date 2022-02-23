@@ -561,7 +561,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                      sum(p.numel() for p in self.mlp.parameters() if p.requires_grad))
 
 
-    def forward(self, img, vol, pts, pts_proj):#, img_feat_geo):#, feat_occupancy):
+    def forward(self, img, vol, pts, pts_proj, return_flow_feature=False):#, img_feat_geo):#, feat_occupancy):
         """
         img: [batchsize * 3 (RGB) * img_h * img_w]
         pts: [batchsize * point_num * 3 (XYZ)]
@@ -619,6 +619,8 @@ class TexPamirNetAttention_nerf(BaseNetwork):
                                       mode='bilinear', padding_mode='border')
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
+        if return_flow_feature:
+            return grid_2d.squeeze(-2), pt_feat_3D.permute(0,2,1,3).squeeze(-1), pt_tex_att, None, pt_tex_sigma
 
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
 

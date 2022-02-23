@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from util import util
 from util import obj_io
-
+from torch.nn import functional as F
 
 def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint):
     from evaluator import Evaluator
@@ -145,6 +145,64 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                              mesh_fname)
     print('Testing Done. ')
 
+
+def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex):
+    from evaluator_tex import EvaluatorTex
+    from dataloader.dataloader_tex import AllImgDataset
+    dataset = AllImgDataset(
+        '/home/nas1_temp/dataset/Thuman', img_h=512, img_w=512,
+        testing_res=256,
+        view_num_per_item=360,
+        load_pts2smpl_idx_wgt=True,
+        smpl_data_folder='./data')
+
+
+    data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=8,
+                                 worker_init_fn=None, drop_last=False)
+
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
+
+    device = torch.device("cuda")
+
+    evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+    for step, batch in enumerate(tqdm(data_loader, desc='Testing', total=len(data_loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        # if not ('betas' in batch and 'pose' in batch):
+        #     raise FileNotFoundError('Cannot found SMPL parameters! You need to run PaMIR-geometry first!')
+        # if not ('mesh_vert' in batch and 'mesh_face' in batch):
+        #     raise FileNotFoundError('Cannot found the mesh for texturing! You need to run PaMIR-geometry first!')
+
+        if False:
+            print('view_id', batch['view_id'])
+            print('target_view_id', batch['target_view_id'])
+            continue
+        nerf_color, nerf_color_warped = evaluater.test_nerf_target(batch['img'], batch['betas'],
+                                         batch['pose'], batch['scale'], batch['trans'],batch["view_id"] - batch['target_view_id'], return_flow_feature=True)
+        import pdb; pdb.set_trace()
+        vol = nerf_color_warped[:, :32].numpy()[0]
+        warped_image = F.grid_sample(batch['img'].cpu(), nerf_color.permute(0, 2, 3, 1))
+
+
+        str(batch['model_id'].item()).zfill(4)
+        flow_path = os.path.join(out_dir, str(batch['model_id'].item()).zfill(4), 'flow')
+        feature_path = os.path.join(out_dir, str(batch['model_id'].item()).zfill(4), 'feature')
+        image_path = os.path.join(out_dir, str(batch['model_id'].item()).zfill(4), 'image')
+        os.makedirs(flow_path, exist_ok=True)
+        os.makedirs(feature_path +'/32', exist_ok=True)
+        os.makedirs(feature_path + '/64', exist_ok=True)
+        os.makedirs(feature_path + '/128', exist_ok=True)
+        os.makedirs(image_path, exist_ok=True)
+        file_name = str(batch["view_id"].item()).zfill(4) + '_' + str(batch["target_view_id"].item()).zfill(4)
+        save_image(torch.cat([(nerf_color/2 + 0.5), torch.zeros((nerf_color.size(0), 1, nerf_color.size(2), nerf_color.size(3)))],dim=1), os.path.join(flow_path, file_name + '.png'))
+        save_image(warped_image, os.path.join(image_path, file_name + '.png'))
+        np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::2, ::2])
+        np.save(os.path.join(feature_path, '64', file_name + '.npy'), vol[:, ::4, ::4])
+        np.save(os.path.join(feature_path, '32', file_name + '.npy'), vol[:, ::8, ::8])
+
+
+    print('Testing Done. ')
 def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex):
     from evaluator_tex import EvaluatorTex
@@ -434,7 +492,7 @@ if __name__ == '__main__':
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiesurfacefirstbin/checkpoints/latest.pt'
 
-    validation(geometry_model_dir , texture_model_dir)
+    # validation(geometry_model_dir , texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
@@ -461,3 +519,7 @@ if __name__ == '__main__':
     #                   pretrained_checkpoint_pamir= geometry_model_dir ,
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
 
+    main_test_flow_feature(
+        '/home/nas1_temp/dataset/Thuman/output_stage1/nerf_flowvr_0216data_maskloss_',
+        pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
+        pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/0223_checkpoint.pt')
