@@ -275,7 +275,7 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nerf_gcmr_debug/'
+        out_dir = './results/validation_nerf_gcmr_debug/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
@@ -298,7 +298,7 @@ def validation(pretrained_checkpoint_pamir,
                                  init_smpl_fname)
 
             optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
-                        batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+                        batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum, mask=batch['mask'])
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
@@ -387,9 +387,10 @@ def validation(pretrained_checkpoint_pamir,
 
 
 if __name__ == '__main__':
-    iternum=50
+    iternum=100
     input_image_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/'
-    output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/'
+    # output_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/'
+    output_dir = './results/test_thuman_0525_gtsmpl/'
     # input_image_dir = './results/test_data_real/'
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
@@ -403,7 +404,7 @@ if __name__ == '__main__':
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr_onlynerf_/checkpoints/latest.pt'
 
-    validation(geometry_model_dir , texture_model_dir)
+    validation(geometry_model_dir , texture_model_dir, iternum=iternum)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
