@@ -550,8 +550,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
-        #self.add_module('mlp',  MLP_NeRF(self.feat_ch_2D  + 3, self.feat_ch_occupancy, self.feat_ch_out))
+        self.add_module('mlp', MLP(self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_out, out_sigmoid=False))
 
         logging.info('#trainable params of 2d encoder = %d' %
                      sum(p.numel() for p in self.cg.parameters() if p.requires_grad))
@@ -613,7 +612,6 @@ class TexPamirNetAttention_nerf(BaseNetwork):
 
         ##
         #grid_2d_offset = pt_tex_coord + grid_2d
-
 
         pt_tex_sample = F.grid_sample(input=img, grid=grid_2d, align_corners=False,
                                       mode='bilinear', padding_mode='border')
