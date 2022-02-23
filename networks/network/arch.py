@@ -570,10 +570,10 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
 
-        _2d_grid = self.generate_2d_grids(img.shape[2])
-        _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
-                   [1, 0], :, :]
-        img_gridconcat = torch.cat([img, _2d_grid], 1)
+        # _2d_grid = self.generate_2d_grids(img.shape[2])
+        # _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
+        #            [1, 0], :, :]
+        # img_gridconcat = torch.cat([img, _2d_grid], 1)
         img_feat_tex = self.cg(img)[-1]
         img_feat = img_feat_tex#torch.cat([img_feat_tex, img_feat_geo], dim=1)
 
