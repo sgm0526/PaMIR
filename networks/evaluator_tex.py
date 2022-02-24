@@ -148,6 +148,7 @@ class EvaluatorTex(object):
         pts_group_num = (img_size * img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
         pts_clr_warped = []
+        pts_final_weights = []
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
             sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
@@ -206,14 +207,15 @@ class EvaluatorTex(object):
                     sampled_z_vals =torch.gather(all_z_vals, 2, indices)
 
                 all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-                pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature)
+                pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature, weight_refine=return_flow_feature)
 
                 all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-                feature_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
-                                                        white_back=not return_flow_feature)
+                feature_pred, _, final_weights = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
+                                                        white_back=not return_flow_feature, weight_refine=return_flow_feature)
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
             pts_clr_warped.append(feature_pred.detach().cpu())
+            pts_final_weights.append(final_weights.detach().cpu())
             #pts_clr_pred.append(pixels_pred)
             #pts_clr_warped.append(pixels_warped)
         ##
@@ -221,11 +223,12 @@ class EvaluatorTex(object):
         pts_clr_pred = pts_clr_pred.permute(0,2,1).reshape(batch_size, pts_clr_pred.size(2), img_size,img_size)
         pts_clr_warped= torch.cat(pts_clr_warped, dim=1)
         pts_clr_warped= pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
+        pts_final_weights = torch.cat(pts_final_weights, dim=1)
+        pts_final_weights = pts_final_weights.sum(dim=2).permute(0,2,1).reshape(batch_size, 1, img_size, img_size)
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
             return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
-
-        return pts_clr_pred, pts_clr_warped
+        return pts_clr_pred, pts_clr_warped, pts_final_weights
 
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, vol_res):
