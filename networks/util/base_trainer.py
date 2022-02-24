@@ -96,7 +96,7 @@ class BaseTrainer(object):
                     if self.step_count % self.options.summary_steps == 0:
 
                         self.train_summaries(batch, out)
-                    if self.step_count % (5*self.options.summary_steps) == 0:
+                    if False: #self.step_count % (5*self.options.summary_steps) == 0:
                         self.summary_writer.add_images('source_img', batch['img'], self.step_count)
                         self.summary_writer.add_images('target_img', batch['target_img'], self.step_count)
                         # self.summary_writer.add_images('nerf_img', pixels_high, self.step_count)
@@ -122,11 +122,11 @@ class BaseTrainer(object):
                             nerf_color_pred, nerf_color_warped = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
                                                                     batch_val['pose'], batch_val['scale'],
                                                                     batch_val['trans'],
-                                                                    batch_val['view_id'] - batch_val['target_view_id'])
+                                                                    batch_val['view_id'] ,batch_val['target_view_id'])
                             nerf_color_pred_list.append(nerf_color_pred)
                             nerf_color_wapred_list.append(nerf_color_warped )
                             target_image_list.append(batch_val['target_img'])
-                            source_image_list.append(batch_val['img'])
+                            source_image_list.append(batch_val['img'][:,0])
 
                         nerf_color_pred= torch.cat(nerf_color_pred_list, dim=0)
                         nerf_color_warped = torch.cat(nerf_color_wapred_list, dim=0)

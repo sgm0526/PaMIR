@@ -148,52 +148,43 @@ class Trainer(BaseTrainer):
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
         cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
 
+
+
         # training data
         img = input_batch['img']
+        mask = input_batch['mask']
+
         pts = input_batch['pts']    # [:, :-self.options.point_num]
         pts_proj = input_batch['pts_proj']  # [:, :-self.options.point_num]
+        gt_clr = input_batch['pts_clr']  # [:, :-self.options.point_num]
 
-        #pts_occ = input_batch['pts_occ']  # [:, :-self.options.point_num]
-        #pts_occ_proj = input_batch['pts_occ_proj']  # [:, :-self.options.point_num]
-        #gt_ov = input_batch['pts_ov']  # [:, :-self.options.point_num]
-        #pts2smpl_idx = input_batch['pts2smpl_idx']  # [:, :-self.options.point_num]
-        #pts2smpl_wgt = input_batch['pts2smpl_wgt']  # [:, :-self.options.point_num]
-        pts_occ_in = input_batch['pts_occ_in']  # [:, :-self.options.point_num]
-        pts_occ_proj_in = input_batch['pts_occ_proj_in']  # [:, :-self.options.point_num]
-        gt_ov_in = input_batch['pts_ov_in']  # [:, :-self.options.point_num]
-        pts_occ_out = input_batch['pts_occ_out']  # [:, :-self.options.point_num]
-        pts_occ_proj_out= input_batch['pts_occ_proj_out']  # [:, :-self.options.point_num]
-        gt_ov_out = input_batch['pts_ov_out']  # [:, :-self.options.point_num]
+        pts_occ = input_batch['pts_occ']  # [:, :-self.options.point_num]
+        pts_occ_proj = input_batch['pts_occ_proj']  # [:, :-self.options.point_num]
+        gt_ov = input_batch['pts_ov']  # [:, :-self.options.point_num]
 
 
-        gt_clr = input_batch['pts_clr']   # [:, :-self.options.point_num]
         gt_betas = input_batch['betas']
         gt_pose = input_batch['pose']
         gt_scale = input_batch['scale']
         gt_trans = input_batch['trans']
 
 
-
         target_img = input_batch['target_img']
-
-        mask = input_batch['mask']
         target_mask = input_batch['target_mask']
 
         ###
-        batch_size = pts.size(0)
         img_size = const.img_res
         fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
         fov_degree = fov * 180 / math.pi
         ray_start = const.ray_start#cam_tz - 0.87
         ray_end = const.ray_end#cam_tz + 0.87
-
         num_steps = const.num_steps
-        hierarchical = const.hierarchical
+
 
         ## todo hierarchical sampling
 
 
-        batch_size, pts_num = pts.size()[:2]
+        batch_size, pts_num = pts[:,0].size()[:2]
         losses = dict()
 
         if self.UseGCMR:
@@ -232,34 +223,21 @@ class Trainer(BaseTrainer):
 
 
 
-
-
         ## 1 train geo loss
-
-        #_,_,_,_,output_sdf = self.pamir_tex_net.forward(img, vol, pts_occ, pts_occ_proj)
-        #losses['geo'] = self.geo_loss(output_sdf, gt_ov)
-        _, _, _, _, output_sdf_in = self.pamir_tex_net.forward(img, vol, pts_occ_in, pts_occ_proj_in)
-        losses['geo_in'] = self.geo_loss(output_sdf_in, gt_ov_in)
-        _, _, _, _, output_sdf_out = self.pamir_tex_net.forward(img, vol, pts_occ_out, pts_occ_proj_out)
-        losses['geo_out'] = self.geo_loss(output_sdf_out, gt_ov_out)
+        _,_,_,_,output_sdf = self.pamir_tex_net.forward(img, vol, pts_occ, pts_occ_proj)
+        losses['geo'] = self.geo_loss(output_sdf, gt_ov)
         #self.loss_weights['geo'] =0
-        #self.loss_weights['geo_in'] =0
-        #self.loss_weights['geo_out'] =0
+
 
         ## 2 train tex loss
-
         output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(img, vol, pts, pts_proj)#, img_feat_geo, feat_occupancy)
 
         # import pdb; pdb.set_trace
         losses['tex'] = self.tex_loss(output_clr_, gt_clr)
         losses['tex_final'] = self.tex_loss(output_clr, gt_clr)
-        losses['att'] = self.attention_loss(output_att)
+        #losses['att'] = self.attention_loss(output_att)
         #self.loss_weights['tex'] = 0
         #self.loss_weights['tex_final'] = 0
-        #input_grad = torch.autograd.grad(torch.sum(output_sigma ), pts, create_graph=torch.is_grad_enabled())[0]
-        #normal = - input_grad / (torch.norm(input_grad, dim=-1, keepdim=True) + 1e-7)
-        #normal = normal.clamp(min=-1, max=1)
-        #normal[torch.isnan(normal)] = 0.
 
         ## 3 train nerf loss
 
@@ -267,79 +245,31 @@ class Trainer(BaseTrainer):
                                                                resolution=(const.img_res, const.img_res),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
-
-        view_diff = input_batch['view_id'] - input_batch['target_view_id']
-
-        # 1, img_size*img_size, num_steps, 3
         points_cam[:, :, :, 2] += cam_tz
 
-        points_cam_source = self.rotate_points(points_cam, view_diff)
-        if False:
-            # import pdb; pdb.set_trace()
-            ###
+
+        sampled_points_list=[]
+        sampled_points_proj_list=[]
+        for i in range(img.size(1)):
+            view_diff = input_batch['view_id'][:,i] - input_batch['target_view_id']
+            points_cam_source = self.rotate_points(points_cam, view_diff)
+
             num_ray = 1000
-            ray_index = np.random.randint(0, img_size * img_size,  num_ray )
-            sampled_points= points_cam_source[:, ray_index]
-            #sampled_points_global = points_cam_global[:, ray_index]
+            ray_index = np.random.randint(0, img_size * img_size, num_ray)
+            sampled_points = points_cam_source[:, ray_index]
             sampled_z_vals = z_vals[:, ray_index]
-            sampled_rays_d_world = rays_d_cam[:, ray_index]
-            gt_clr_nerf= target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
+            sampled_rays_d_target = rays_d_cam[:, ray_index]
+            gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
 
+            sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
+            sampled_points = sampled_points.reshape(batch_size, -1, 3)
+            sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
+            sampled_points_list.append(sampled_points.unsqueeze(1))
+            sampled_points_proj_list.append(sampled_points_proj.unsqueeze(1))
 
-        if True:
-            # import pdb; pdb.set_trace()
-            ray_index = np.random.randint(0, pts_num, 1000)
-            pts_world =input_batch['pts_world'][:, ray_index]
-
-            pts_target = self.rotate_points(pts_world, input_batch['target_view_id'])
-            points_proj = self.project_points(pts_target, cam_f, cam_c, cam_tz)
-            h_grid = points_proj[:, :, 0].view(batch_size, points_proj.size(1), 1, 1)
-            v_grid = points_proj[:, :, 1].view(batch_size, points_proj.size(1), 1, 1)
-            grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-            gt_clr_nerf = F.grid_sample(input=target_img.to(self.device), grid=grid_2d.to(self.device),
-                                        align_corners=False, mode='bilinear', padding_mode='border').permute(0, 2, 3,
-                                                                                                             1).squeeze(
-                2)  # b,5000,3
-
-            ray_d_target = pts_target - cam_t
-            ray_d_target = normalize_vecs(ray_d_target)
-            z_vals_ = torch.linspace(const.ray_start, const.ray_end, const.num_steps, device=self.device).reshape(1, 1,
-                                                                                                                  const.num_steps,
-                                                                                                                  1).repeat(
-                batch_size, pts_world.size(1), 1, 1)
-
-            points = ray_d_target.unsqueeze(2).repeat(1, 1, const.num_steps, 1) * z_vals_
-            # points = points.reshape(1, -1, 3)
-            points = points + cam_t  # target view!!
-            sampled_points = self.rotate_points(points, view_diff)  # source view!!
-            #sampled_points_global = self.rotate_points(points, -input_batch['target_view_id'])
-            num_ray = pts_world.size(1)
-            sampled_z_vals = z_vals_
-            sampled_rays_d_world = ray_d_target
-
-            ###
-            ray_index = np.random.randint(0, img_size * img_size, 1000)
-            sampled_points_random = points_cam_source[:, ray_index]
-            #sampled_points_global_random = points_cam_global[:, ray_index]
-            sampled_z_vals_random = z_vals[:, ray_index]
-            sampled_rays_d_world_random = rays_d_cam[:, ray_index]
-            gt_clr_nerf_random = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
-
-            ##
-            num_ray = num_ray + 1000
-            sampled_points = torch.cat([sampled_points, sampled_points_random], 1)
-            #sampled_points_global = torch.cat([sampled_points_global, sampled_points_global_random], 1)
-            sampled_z_vals = torch.cat([sampled_z_vals, sampled_z_vals_random], 1)
-            sampled_rays_d_world = torch.cat([sampled_rays_d_world, sampled_rays_d_world_random], 1)
-            gt_clr_nerf = torch.cat([gt_clr_nerf, gt_clr_nerf_random], 1)
-
-
-
-
-        sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
-        sampled_points = sampled_points.reshape(batch_size, -1, 3)
-        sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+        sampled_points = torch.cat(sampled_points_list, 1)
+        sampled_points_proj = torch.cat(sampled_points_proj_list, 1)
 
         nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
             img, vol,  sampled_points, sampled_points_proj)
@@ -354,18 +284,29 @@ class Trainer(BaseTrainer):
                 fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1,num_steps-1), weights.reshape(-1,num_steps)[:,1:-1], num_steps, det=False).detach()
                 fine_z_vals = fine_z_vals.reshape(batch_size,num_ray, num_steps)
 
-                sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-                fine_points = sampled_rays_d_world * fine_z_vals[..., None]
-                fine_points[:, :, :, 2] += cam_tz
-                fine_points = self.rotate_points(fine_points, view_diff)
-                fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
-
-
                 all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
                 _, indices = torch.sort(all_z_vals, dim=2)
 
-            nerf_output_clr_fine_,nerf_output_clr_fine,_,_, nerf_output_sigma_fine = self.pamir_tex_net.forward(
-                img, vol, fine_points.reshape(batch_size, num_ray * num_steps , 3), fine_points_proj.reshape(batch_size, num_ray * num_steps, 2) )
+                sampled_rays_d_target = sampled_rays_d_target.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                fine_points = sampled_rays_d_target * fine_z_vals[..., None]
+                fine_points[:, :, :, 2] += cam_tz
+
+                fine_points_list = []
+                fine_points_proj_list = []
+                for i in range(img.size(1)):
+                    view_diff = input_batch['view_id'][:, i] - input_batch['target_view_id']
+                    fine_points = self.rotate_points(fine_points, view_diff)
+                    fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
+                    fine_points = fine_points.reshape(batch_size, -1, 3)
+                    fine_points_proj = fine_points_proj.reshape(batch_size, -1, 2)
+
+                    fine_points_list.append(fine_points.unsqueeze(1))
+                    fine_points_proj_list.append(fine_points_proj.unsqueeze(1))
+                fine_points = torch.cat(fine_points_list, 1)
+                fine_points_proj = torch.cat(fine_points_proj_list, 1)
+
+
+            nerf_output_clr_fine_,nerf_output_clr_fine,_,_, nerf_output_sigma_fine = self.pamir_tex_net.forward( img, vol, fine_points, fine_points_proj)
 
             losses['nerf_opacity'] = torch.mean(
                 torch.log(0.1 + nerf_output_sigma_fine.view(nerf_output_sigma_fine.size(0), -1)) +
@@ -387,6 +328,7 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
+
         #self.loss_weights['nerf_tex'] =0
         #self.loss_weights['nerf_tex_final'] =0
 

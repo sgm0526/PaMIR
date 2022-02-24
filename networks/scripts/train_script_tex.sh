@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=3
-NAME='pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie'
+GPU_ID=2
+NAME='pamir_nerf_0224_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_sv'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
 PRETRAINED_GCMR_CHECKPOINT='./results/gcmr_pretrained'
 PRETRAINED_PAMIR_NET_CHECKPOINT='./results/pamir_geometry/checkpoints/latest.pt'
 LR=2e-4
-BATCH_SIZE=3
+BATCH_SIZE=2
 LOG_DIR='./results'
 DATASET_DIR='/home/nas1_temp/dataset/Thuman'
 VIEW_NUM_PER_ITEM=360
