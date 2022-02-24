@@ -347,116 +347,126 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        # out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_pretrained_0223/'
-        # os.makedirs(out_dir, exist_ok=True)
-        # model_id = str(501 + batch['model_id'].item()).zfill(4)
-        # print(model_id)
-        #
-        # vol_res = 128
-        #
-        #
-        # use_gcmr= False
-        # if use_gcmr :
-        #     pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
-        #     pred_smpl = scale * pred_smpl + trans
-        #
-        #     ##optimization with nerf
-        #
-        #     smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
-        #         util.read_smpl_constants('./data')
-        #
-        #     init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl.obj')
-        #     obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
-        #                          init_smpl_fname)
-        #
-        #     #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
-        #     #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
-        #
-        #     #optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
-        #     #obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
-        #     #                    optm_smpl_fname)
-        #
-        #
-        #     ##optimization end
-        #     # save_image
-        #     #image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
-        #     #save_image(nerf_image_before, image_fname)
-        #     #image_fname = os.path.join(out_dir, model_id + '_nerf_image_after.png')
-        #     #save_image(nerf_image, image_fname)
-        #
-        #     #betas =optm_betas
-        #     #pose = optm_thetas
-        #     betas = pred_betas
-        #     pose = pred_rotmat
-        #
-        # else:
-        #     betas= batch['betas']
-        #     pose = batch['pose']
-        #     scale = batch['scale']
-        #     trans = batch['trans']
-        #
-        #     #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
-        #     #        batch['img'], betas, pose , scale, trans, iternum)
-        #
-        # val_pretrained = True
-        # if val_pretrained:
-        #     mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
-        #
-        #     # save .obj
-        #     mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
-        #     obj_io.save_obj_data(mesh, mesh_fname)
-        #
-        #
-        # else:
-        #     nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], betas,pose, scale , trans,vol_res=vol_res)
-        #     thresh = 0.5
-        #     vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
-        #     mesh = dict()
-        #     mesh['v'] = vertices / vol_res - 0.5
-        #     mesh['f'] = simplices[:, (1, 0, 2)]
-        #     mesh['vn'] = normals
-        #
-        #     # save .obj
-        #     mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
-        #     obj_io.save_obj_data(mesh, mesh_fname)
-        #
-        #     # save .mrc
-        #     if not val_pretrained:
-        #         with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
-        #                               shape=nerf_sigma.shape, mrc_mode=2) as mrc:
-        #             mrc.data[:] = nerf_sigma
-        #
-        #     mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
-        #     mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
-        #     mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
-        #
-        #     mesh_color = evaluater.test_tex_pifu(batch['img'], mesh_v, betas, pose, scale, trans)
-        #
-        #     mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
-        #
-        #     obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
-        #                           'f': mesh_f[0].squeeze().detach().cpu().numpy(),
-        #                           'vc': mesh_color.squeeze()},
-        #                          mesh_fname)
-        #
-        #
-        #
-        # # save_image
-        # image_fname = os.path.join(out_dir, model_id + '_src_image.png')
-        # save_image(batch['img'],  image_fname )
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0224_gtsmpl_pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiesurfacefirstbin/'
+        os.makedirs(out_dir, exist_ok=True)
+        model_id = str(501 + batch['model_id'].item()).zfill(4)
+        print(model_id)
+
+        vol_res = 128
+
+
+        use_gcmr= False
+        if use_gcmr :
+            pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
+            pred_smpl = scale * pred_smpl + trans
+
+            ##optimization with nerf
+
+            smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+                util.read_smpl_constants('./data')
+
+            init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl.obj')
+            obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                 init_smpl_fname)
+
+            #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
+            #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+
+            #optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
+            #obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+            #                    optm_smpl_fname)
+
+
+            ##optimization end
+            # save_image
+            #image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
+            #save_image(nerf_image_before, image_fname)
+            #image_fname = os.path.join(out_dir, model_id + '_nerf_image_after.png')
+            #save_image(nerf_image, image_fname)
+
+            #betas =optm_betas
+            #pose = optm_thetas
+            betas = pred_betas
+            pose = pred_rotmat
+
+        else:
+            betas= batch['betas']
+            pose = batch['pose']
+            scale = batch['scale']
+            trans = batch['trans']
+
+            #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
+            #        batch['img'], betas, pose , scale, trans, iternum)
+
+        val_pretrained = False
+        if val_pretrained:
+            mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
+            ## rotate to gt view
+            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
+            mesh['v'] = vertices1[0].squeeze().detach().cpu().numpy()
+
+            # save .obj
+            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+            obj_io.save_obj_data(mesh, mesh_fname)
+
+
+        else:
+            nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], betas,pose, scale , trans,vol_res=vol_res)
+            thresh = 0.5
+            vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
+            mesh = dict()
+
+
+
+            mesh['v'] = vertices / vol_res - 0.5
+            ## rotate to gt view
+            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
+            mesh['v'] = vertices1[0].squeeze().detach().cpu().numpy()
+
+            mesh['f'] = simplices[:, (1, 0, 2)]
+            #mesh['vn'] = normals
+
+            # save .obj
+            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+            obj_io.save_obj_data(mesh, mesh_fname)
+
+            # save .mrc
+            if not val_pretrained:
+                with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
+                                      shape=nerf_sigma.shape, mrc_mode=2) as mrc:
+                    mrc.data[:] = nerf_sigma
+
+            mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
+            mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
+            mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
+
+            mesh_color = evaluater.test_tex_pifu(batch['img'], mesh_v, betas, pose, scale, trans)
+
+            mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
+
+            obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                                  'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                                  'vc': mesh_color.squeeze()},
+                                 mesh_fname)
+
+
+
+        # save_image
+        image_fname = os.path.join(out_dir, model_id + '_src_image.png')
+        save_image(batch['img'],  image_fname )
 
 
 
 
         # #measure dist
         model_id = str(501 + batch['model_id'].item()).zfill(4)
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nerf_gcmr/'
+        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nerf_gcmr/'
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
 
         tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
-        #tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 30000)
+        tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 30000)
 
 
         p2s_dist = get_surface_dist(tgt_mesh, src_mesh)
@@ -510,7 +520,7 @@ if __name__ == '__main__':
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiesurfacefirstbin/checkpoints/latest.pt'
 
     validation(geometry_model_dir , texture_model_dir)
 

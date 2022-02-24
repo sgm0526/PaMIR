@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=2
-NAME='pamir_geometry_gtsmpl_epoch30'
+NAME='pamir_geometry_gtsmpl_epoch30_trainset'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
