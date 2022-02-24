@@ -749,7 +749,7 @@ class TexPamirNetAttentionMultiview(BaseNetwork):
         return pt_tex_pred_multiview, pt_tex, pt_tex_att, pt_feat_3D.squeeze()
 
 
-from kornia.filters import filter2D
+#from kornia.filters import filter2D
 from math import log2
 
 class Blur(nn.Module):
