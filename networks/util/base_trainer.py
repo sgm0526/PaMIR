@@ -126,7 +126,7 @@ class BaseTrainer(object):
                             nerf_color_pred_list.append(nerf_color_pred)
                             nerf_color_wapred_list.append(nerf_color_warped )
                             target_image_list.append(batch_val['target_img'])
-                            source_image_list.append(batch_val['img'][:,0])
+                            source_image_list.append(batch_val['img'].reshape(-1, 3, batch_val['img'].size(3), batch_val['img'].size(3)))
 
                         nerf_color_pred= torch.cat(nerf_color_pred_list, dim=0)
                         nerf_color_warped = torch.cat(nerf_color_wapred_list, dim=0)
@@ -137,6 +137,7 @@ class BaseTrainer(object):
                         self.summary_writer.add_images('nerf_img_wapred', nerf_color_warped , self.step_count)
                         self.summary_writer.add_images('target_image', target_image, self.step_count)
                         self.summary_writer.add_images('source_image', source_image, self.step_count)
+
 
 
                     if False: #self.step_count % (100*self.options.summary_steps) == 0:

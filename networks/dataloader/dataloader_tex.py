@@ -101,8 +101,8 @@ class TrainingImgDataset(Dataset):
         point_num = self.point_num
 
         if True :
-            source_view_list = [view_id]
-            #source_view_list = [view_id, (view_id+180)%360]
+            #source_view_list = [view_id]
+            source_view_list = [view_id, (view_id+180)%360]
 
         source_img_list=[]
         source_mask_list = []
@@ -125,48 +125,48 @@ class TrainingImgDataset(Dataset):
 
         for i in source_view_list:
             img, mask = self.load_image(data_item, i)
-            source_img_list.append(torch.from_numpy(img.transpose((2, 0, 1))).unsqueeze(0))
-            source_mask_list.append(torch.from_numpy(mask).unsqueeze(0))
+            source_img_list.append(torch.from_numpy(img.transpose((2, 0, 1))))
+            source_mask_list.append(torch.from_numpy(mask))
             cam_R, cam_t = self.load_cams(data_item, i)
 
             pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item,i, point_num)
-            pts_list.append(torch.from_numpy(pts).unsqueeze(0))
+            pts_list.append(torch.from_numpy(pts))
             if not self.training:
                 pts = all_pts
                 pts_clr = all_pts_clr
             pts_r = self.rotate_points(pts, i)
             pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
-            pts_r_list.append(torch.from_numpy(pts_r).unsqueeze(0))
-            pts_proj_list.append(torch.from_numpy(pts_proj).unsqueeze(0))
-            pts_clr_list.append(torch.from_numpy(pts_clr).unsqueeze(0))
+            pts_r_list.append(torch.from_numpy(pts_r))
+            pts_proj_list.append(torch.from_numpy(pts_proj))
+            pts_clr_list.append(torch.from_numpy(pts_clr))
 
             pts_ids, pts_occ, pts_ov = self.load_points_occ(data_item, point_num)
             pts_occ_r = self.rotate_points(pts_occ, i)
             pts_occ_proj = self.project_points(pts_occ, cam_R, cam_t, cam_f)
-            pts_occ_list.append(torch.from_numpy(pts_occ_r ).unsqueeze(0))
-            pts_occ_proj_list.append(torch.from_numpy(pts_occ_proj).unsqueeze(0))
-            pts_ov_list.append(torch.from_numpy(pts_ov).unsqueeze(0))
+            pts_occ_list.append(torch.from_numpy(pts_occ_r ))
+            pts_occ_proj_list.append(torch.from_numpy(pts_occ_proj))
+            pts_ov_list.append(torch.from_numpy(pts_ov))
 
 
             pose, betas, trans, scale = self.update_smpl_params(pose, betas, trans, scale, i)
-            pose_list.append(torch.from_numpy(pose).unsqueeze(0))
-            betas_list.append(torch.from_numpy(betas).unsqueeze(0))
-            trans_list.append(torch.from_numpy(trans).unsqueeze(0))
-            scale_list.append(torch.from_numpy(scale).unsqueeze(0))
+            pose_list.append(torch.from_numpy(pose))
+            betas_list.append(torch.from_numpy(betas))
+            trans_list.append(torch.from_numpy(trans))
+            scale_list.append(torch.from_numpy(scale))
 
-        source_img_list= torch.cat(source_img_list, 0 )
-        source_mask_list = torch.cat(source_mask_list, 0)
-        pts_list= torch.cat(pts_list, 0)
-        pts_r_list = torch.cat(pts_r_list, 0)
-        pts_proj_list = torch.cat(pts_proj_list, 0)
-        pts_clr_list = torch.cat(pts_clr_list, 0)[0]
-        pts_occ_list = torch.cat(pts_occ_list, 0)
-        pts_occ_proj_list = torch.cat(pts_occ_proj_list, 0)
-        pts_ov_list = torch.cat(pts_ov_list, 0)[0]
-        pose_list = torch.cat(pose_list, 0)[0]
-        betas_list = torch.cat(betas_list, 0)[0]
-        trans_list = torch.cat(trans_list, 0)[0]
-        scale_list = torch.cat(scale_list, 0)[0]
+        source_img_list= torch.stack(source_img_list, 0 )
+        source_mask_list = torch.stack(source_mask_list, 0)
+        pts_list= torch.stack(pts_list, 0)
+        pts_r_list = torch.stack(pts_r_list, 0)
+        pts_proj_list = torch.stack(pts_proj_list, 0)
+        pts_clr_list = torch.stack(pts_clr_list, 0)[0]
+        pts_occ_list = torch.stack(pts_occ_list, 0)
+        pts_occ_proj_list = torch.stack(pts_occ_proj_list, 0)
+        pts_ov_list = torch.stack(pts_ov_list, 0)[0]
+        pose_list = torch.stack(pose_list, 0)[0]
+        betas_list = torch.stack(betas_list, 0)[0]
+        trans_list = torch.stack(trans_list, 0)[0]
+        scale_list = torch.stack(scale_list, 0)[0]
 
         source_view_list_=None
         for i in source_view_list:

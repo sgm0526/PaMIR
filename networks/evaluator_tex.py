@@ -195,20 +195,20 @@ class EvaluatorTex(object):
                         fine_points_proj_list = []
                         for i in range(img.size(1)):
                             view_diff = view_id[:, i] - target_view_id
-                            fine_points = self.rotate_points(fine_points, view_diff)
-                            fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
-                            fine_points = fine_points.reshape(batch_size, -1, 3)
+                            fine_points_ = self.rotate_points(fine_points, view_diff)
+                            fine_points_proj = self.project_points(fine_points_, cam_f, cam_c, cam_tz)
+                            fine_points_ = fine_points_.reshape(batch_size, -1, 3)
                             fine_points_proj = fine_points_proj.reshape(batch_size, -1, 2)
 
-                            fine_points_list.append(fine_points.unsqueeze(1))
+                            fine_points_list.append(fine_points_.unsqueeze(1))
                             fine_points_proj_list.append(fine_points_proj.unsqueeze(1))
-                        fine_points = torch.cat(fine_points_list, 1)
+                        fine_points_ = torch.cat(fine_points_list, 1)
                         fine_points_proj = torch.cat(fine_points_proj_list, 1)
 
 
 
                     nerf_output_clr_fine_, nerf_output_clr_fine, _, _, nerf_output_sigma_fine = self.pamir_tex_net.forward(
-                        img, vol, fine_points,fine_points_proj,return_flow_feature)
+                        img, vol, fine_points_,fine_points_proj,return_flow_feature)
 
                     nerf_output_clr_ = torch.gather(torch.cat(
                         [nerf_output_clr_.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr_.size(-1)),
