@@ -616,7 +616,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()
-        pt_tex_att = pt_out[:, :, 3:6]#.sigmoid() # b, num, 3 (sourcenum)
+        pt_tex_att = pt_out[:, :, 3:6].relu()#.sigmoid() # b, num, 3 (sourcenum)
         pt_tex_sigma = pt_out[:, :, -1:].sigmoid()
 
 
