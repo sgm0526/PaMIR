@@ -55,7 +55,7 @@ class EvaluatorTex(object):
         # pamir_net
         #self.pamir_net = PamirNet().to(self.device)
         self.pamir_tex_net = TexPamirNetAttention_nerf().to(self.device)
-        self.graph_mesh = Mesh()
+
 
         self.decoder_output_size = 128
         self.NR = NeuralRenderer_coord().to(self.device)
@@ -403,6 +403,7 @@ class EvaluatorTex(object):
     def optm_smpl_param(self, img, mask, betas, pose, scale, trans, iter_num):
         assert iter_num > 0
         self.pamir_tex_net.eval()
+        self.graph_mesh = Mesh()
 
         cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
