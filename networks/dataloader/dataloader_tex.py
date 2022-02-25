@@ -101,8 +101,8 @@ class TrainingImgDataset(Dataset):
         point_num = self.point_num
 
         if True :
-            #source_view_list = [view_id]
-            source_view_list = [view_id, (view_id+180)%360]
+            source_view_list = [view_id]
+            #source_view_list = [view_id, (view_id+180)%360]
 
         source_img_list=[]
         source_mask_list = []
