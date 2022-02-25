@@ -246,20 +246,19 @@ class Trainer(BaseTrainer):
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
         points_cam[:, :, :, 2] += cam_tz
+        num_ray = 1000
+        ray_index = np.random.randint(0, img_size * img_size, num_ray)
 
+        sampled_z_vals = z_vals[:, ray_index]
+        sampled_rays_d_target = rays_d_cam[:, ray_index]
+        gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
 
         sampled_points_list=[]
         sampled_points_proj_list=[]
         for i in range(img.size(1)):
             view_diff = input_batch['view_id'][:,i] - input_batch['target_view_id']
             points_cam_source = self.rotate_points(points_cam, view_diff)
-
-            num_ray = 1000
-            ray_index = np.random.randint(0, img_size * img_size, num_ray)
             sampled_points = points_cam_source[:, ray_index]
-            sampled_z_vals = z_vals[:, ray_index]
-            sampled_rays_d_target = rays_d_cam[:, ray_index]
-            gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
 
             sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
             sampled_points = sampled_points.reshape(batch_size, -1, 3)
