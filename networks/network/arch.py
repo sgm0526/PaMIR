@@ -543,10 +543,10 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 3 + 1+ 1 #+1
+        self.feat_ch_out = 3 + 3+ 1 #+1
         self.feat_ch_occupancy = 128
-        self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
-        #self.add_module('cg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
+        #self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
+        self.add_module('cg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
@@ -590,7 +590,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_tex_sample_list=[]
         for i in range(img.size(1)) :
 
-            img_feat = self.cg(img[:,i])  # [-1]
+            img_feat = self.cg(img[:,i])[-1]
             h_grid = pts_proj[:,i][:, :, 0].view(batch_size, point_num, 1, 1)
             v_grid = pts_proj[:,i][:, :, 1].view(batch_size, point_num, 1, 1)
             grid_2d = torch.cat([h_grid, v_grid], dim=-1)
@@ -599,7 +599,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pt_tex_sample = F.grid_sample(input=img[:,i], grid=grid_2d, align_corners=False,
                                           mode='bilinear', padding_mode='border')
             pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
-            pt_tex_sample_list.append(pt_tex_sample.unsqueeze(1))
+            pt_tex_sample_list.append(pt_tex_sample)
             #sample feature
             pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
                                        mode='bilinear', padding_mode='border')
@@ -608,36 +608,24 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             pts_pe = self.pe(pts[:,i].reshape(-1, 3)).reshape(batch_size, point_num, -1)  # batch_size, point_num, ch
 
             pt_out0 = self.mlp.forward0(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
-            pt_out0_list.append(pt_out0.unsqueeze(1))
-        pt_tex_sample= torch.cat(pt_tex_sample_list, 1)
-
-
-        pt_out0 = torch.cat(pt_out0_list, 1)
+            pt_out0_list.append(pt_out0)
+        pt_tex_sample = torch.stack(pt_tex_sample_list, 1)
+        pt_out0 = torch.stack(pt_out0_list, 1)
         pt_out0_mean = torch.mean(pt_out0, dim=1)
         pt_out = self.mlp.forward1(pt_out0_mean)
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()
-        # pt_tex_coord = pt_out[:, :, 3:5].unsqueeze(2)
-        #pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+        pt_tex_att = pt_out[:, :, 3:6]#.sigmoid() # b, num, 3 (sourcenum)
         pt_tex_sigma = pt_out[:, :, -1:].sigmoid()
 
-        pt_tex_att_list = []
+
+        pt_tex_att= torch.softmax(pt_tex_att, dim=-1)
+        pt_tex = pt_tex_pred*pt_tex_att[:,:, 0:]
         for i in range(img.size(1)):
-            pt_out = self.mlp.forward1(pt_out0_list[i].squeeze(1))
-            pt_out = pt_out.permute([0, 2, 3, 1]).view(batch_size, point_num, self.feat_ch_out)
-            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
-            pt_tex_att_list.append(pt_tex_att.unsqueeze(1))
+            pt_tex = pt_tex+ pt_tex_sample[:,i]*pt_tex_att[:,:, i+1:i+2]
 
-        pt_tex_att= torch.cat(pt_tex_att_list, 1) #batchsize , num_point, source_num
-
-        ##
-        #grid_2d_offset = pt_tex_coord + grid_2d
-
-        denom = 2*torch.sum(pt_tex_att, dim=1)
-        num =torch.sum(pt_tex_att * pt_tex_sample, dim=1) + torch.sum(pt_tex_att, dim=1)*pt_tex_pred
-        pt_tex = num/ denom
-
+        #pt_tex = pt_tex_att * pt_tex_sample[:,i] + (1 - pt_tex_att) * pt_tex_pred
         if return_flow_feature:
             return grid_2d.squeeze(-2), pt_feat_3D.permute(0,2,1,3).squeeze(-1), pt_tex_att, None, pt_tex_sigma
 
