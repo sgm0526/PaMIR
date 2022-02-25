@@ -337,8 +337,8 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
-        #self.loss_weights['nerf_tex'] =0
-        #self.loss_weights['nerf_tex_final'] =0
+        self.loss_weights['nerf_tex'] =0
+        self.loss_weights['nerf_tex_final'] =0
 
 
 

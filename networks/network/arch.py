@@ -543,7 +543,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 3 + 3+ 1 #+1
+        self.feat_ch_out = 3 + 1+ 1 #+1
         self.feat_ch_occupancy = 128
         #self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
         self.add_module('cg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
@@ -616,14 +616,28 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()
-        pt_tex_att = pt_out[:, :, 3:6]#.sigmoid() # b, num, 3 (sourcenum)
+        #pt_tex_att = pt_out[:, :, 3:6]#.sigmoid() # b, num, 3 (sourcenum)
         pt_tex_sigma = pt_out[:, :, -1:].sigmoid()
 
 
-        pt_tex_att= torch.softmax(pt_tex_att, dim=-1)
-        pt_tex = pt_tex_pred*pt_tex_att[:,:, 0:1]
+
+
+        #pt_tex_att= torch.softmax(pt_tex_att, dim=-1)
+        #pt_tex = pt_tex_pred*pt_tex_att[:,:, 0:1]
+        #for i in range(img.size(1)):
+        #    pt_tex = pt_tex+ pt_tex_sample[:,i]*pt_tex_att[:,:, i+1:i+2]
+
+        pt_tex_att_list = []
         for i in range(img.size(1)):
-            pt_tex = pt_tex+ pt_tex_sample[:,i]*pt_tex_att[:,:, i+1:i+2]
+            pt_out = self.mlp.forward1(pt_out0_list[i].squeeze(1))
+            pt_out = pt_out.permute([0, 2, 3, 1]).view(batch_size, point_num, self.feat_ch_out)
+            pt_tex_att = pt_out[:, :, 3:4].sigmoid()
+            pt_tex_att_list.append(pt_tex_att)
+        pt_tex_att = torch.stack(pt_tex_att_list, 1)  # batchsize , sourcenum, num_point, 1
+
+        denom = 2 * torch.sum(pt_tex_att, dim=1)
+        num = torch.sum(pt_tex_att * pt_tex_sample, dim=1) + torch.sum(pt_tex_att, dim=1) * pt_tex_pred
+        pt_tex = num / denom
 
         #pt_tex = pt_tex_att * pt_tex_sample[:,i] + (1 - pt_tex_att) * pt_tex_pred
         if return_flow_feature:
