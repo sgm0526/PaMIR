@@ -616,12 +616,12 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()
-        pt_tex_att = pt_out[:, :, 3:6].relu()#.sigmoid() # b, num, 3 (sourcenum)
+        pt_tex_att = pt_out[:, :, 3:6]#.sigmoid() # b, num, 3 (sourcenum)
         pt_tex_sigma = pt_out[:, :, -1:].sigmoid()
 
 
         pt_tex_att= torch.softmax(pt_tex_att, dim=-1)
-        pt_tex = pt_tex_pred*pt_tex_att[:,:, 0:]
+        pt_tex = pt_tex_pred*pt_tex_att[:,:, 0:1]
         for i in range(img.size(1)):
             pt_tex = pt_tex+ pt_tex_sample[:,i]*pt_tex_att[:,:, i+1:i+2]
 
