@@ -261,7 +261,7 @@ class PamirNet(BaseNetwork):
         # self.mlp = MLP()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.add_module('hg', hg2.HourglassNet(4, 3, 128, self.feat_ch_2D))
+        self.add_module('hg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         self.add_module('mlp', MLP(self.feat_ch_2D + self.feat_ch_3D, 1, weight_norm=False))
 
@@ -545,12 +545,12 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_3D = 32
         self.feat_ch_out = 3 + 1+ 1 #+1
         self.feat_ch_occupancy = 128
-        self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
-        #self.add_module('cg', hg2.HourglassNet(3+2 ,2, 3, 128, self.feat_ch_2D))
+        #self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
+        self.add_module('cg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
+        self.add_module('mlp', MLP(self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_out, out_sigmoid=False))
         #self.add_module('mlp',  MLP_NeRF(self.feat_ch_2D  + 3, self.feat_ch_occupancy, self.feat_ch_out))
 
         logging.info('#trainable params of 2d encoder = %d' %
@@ -570,12 +570,11 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         batch_size = pts.size()[0]
         point_num = pts.size()[1]
 
-        _2d_grid = self.generate_2d_grids(img.shape[2])
-        _2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
-                   [1, 0], :, :]
-        img_gridconcat = torch.cat([img, _2d_grid], 1)
-        img_feat_tex = self.cg( img_gridconcat)#[-1]
-        img_feat = img_feat_tex#torch.cat([img_feat_tex, img_feat_geo], dim=1)
+        #_2d_grid = self.generate_2d_grids(img.shape[2])
+        #_2d_grid = torch.from_numpy(_2d_grid).permute(2, 0, 1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()[:,
+        #           [1, 0], :, :]
+        #img_gridconcat = torch.cat([img, _2d_grid], 1)
+        img_feat = self.cg(img)[-1]#torch.cat([img_feat_tex, img_feat_geo], dim=1)
 
         h_grid = pts_proj[:, :, 0].view(batch_size, point_num, 1, 1)
         v_grid = pts_proj[:, :, 1].view(batch_size, point_num, 1, 1)
@@ -601,7 +600,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
 
         #import pdb; pdb.set_trace()
-        pt_out, feature = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+        pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
         #pt_out = self.mlp(torch.cat([pt_feat, pts.permute(0, 2, 1).unsqueeze(-1)], dim=1))
 
         pt_out = pt_out.permute([0, 2, 3, 1])
@@ -620,6 +619,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         if return_flow_feature:
+            feature = self.mlp.forward0(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
             return torch.cat([grid_2d.squeeze(-2), pt_tex_pred], dim=-1), torch.cat([feature.permute(0,2,1,3).squeeze(-1), pt_tex_att],dim=-1), pt_tex_att, None, pt_tex_sigma
 
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
