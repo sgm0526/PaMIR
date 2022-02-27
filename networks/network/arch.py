@@ -550,7 +550,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp',MLP((self.feat_ch_2D + self.feat_ch_3D + num_freq * 2 * 3 + 3)*2, self.feat_ch_out, out_sigmoid=False))
+        self.add_module('mlp',MLP( self.feat_ch_3D +(self.feat_ch_2D + num_freq * 2 * 3 + 3)*2, self.feat_ch_out, out_sigmoid=False))
 
 
         logging.info('#trainable params of 2d encoder = %d' %
@@ -603,14 +603,14 @@ class TexPamirNetAttention_nerf(BaseNetwork):
             #sample feature
             pt_feat_2D = F.grid_sample(input=img_feat, grid=grid_2d, align_corners=False,
                                        mode='bilinear', padding_mode='border')
-            pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1)  # batch_size, ch, point_num, 1
 
             pts_pe = self.pe(pts[:,i].reshape(-1, 3)).reshape(batch_size, point_num, -1)  # batch_size, point_num, ch
-            pt_out0_list.append(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+            pt_out0_list.append(torch.cat([pt_feat_2D, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
 
 
         pt_tex_sample = torch.stack(pt_tex_sample_list, 1)
         pt_out0 = torch.cat(pt_out0_list, 1)
+        pt_out0 = torch.cat([pt_feat_3D, pt_out0],1)
 
         pt_out = self.mlp.forward(pt_out0)
         pt_out = pt_out.permute([0, 2, 3, 1])
