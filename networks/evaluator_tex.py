@@ -501,6 +501,12 @@ class EvaluatorTex(object):
             pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(1, num_ray, const.num_steps, -1),
                                                    sampled_z_vals, device=self.device, white_back=False)# white_back=True)
 
+            mask_down = F.interpolate(mask.permute(0, 3, 1, 2), 128)
+            y, x = torch.meshgrid(torch.linspace(-1, 1, 128), torch.linspace(-1, 1, 128))
+            mask_grid = torch.cat([x[...,None], y[...,None]], dim=-1)
+            in_mask = mask_grid[mask_down[0, 0] == 1]
+            dist_mat = torch.cdist(in_mask.cuda(), pred_vert_new_proj[0])
+            min_dist = dist_mat.min(1)[0].mean()
 
 
 
@@ -510,8 +516,7 @@ class EvaluatorTex(object):
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
 
-            loss = loss_fitting  #+ loss_nerf  #loss_fitting * 1.0 +loss_nerf #+ 10*loss_bias
-            #loss = loss_nerf +loss_mask#+ 10*loss_bias #loss_fitting * 1.0 +loss_nerf * 1.0#+ loss_bias * 1.0
+            loss = min_dist
 
             optm.zero_grad()
             loss.backward()

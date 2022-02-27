@@ -347,7 +347,7 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0227_gtsmpl_pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0227_gcmropt_pamir_geometry_gtsmpl_epoch30_trainset_hg2/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
@@ -355,7 +355,7 @@ def validation(pretrained_checkpoint_pamir,
         vol_res = 128
 
 
-        use_gcmr= False
+        use_gcmr= True
         if use_gcmr :
             pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
             pred_smpl = scale * pred_smpl + trans
@@ -369,25 +369,25 @@ def validation(pretrained_checkpoint_pamir,
             obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                  init_smpl_fname)
 
-            #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
-            #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
+                batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
 
-            #optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
-            #obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
-            #                    optm_smpl_fname)
+            optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
+            obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                optm_smpl_fname)
 
 
             ##optimization end
-            # save_image
-            #image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
-            #save_image(nerf_image_before, image_fname)
-            #image_fname = os.path.join(out_dir, model_id + '_nerf_image_after.png')
-            #save_image(nerf_image, image_fname)
+            #save_image
+            image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
+            save_image(nerf_image_before, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_nerf_image_after.png')
+            save_image(nerf_image, image_fname)
 
-            #betas =optm_betas
-            #pose = optm_thetas
-            betas = pred_betas
-            pose = pred_rotmat
+            betas =optm_betas
+            pose = optm_thetas
+            #betas = pred_betas
+            #pose = pred_rotmat
 
         else:
             betas= batch['betas']
@@ -398,7 +398,7 @@ def validation(pretrained_checkpoint_pamir,
             #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
             #        batch['img'], betas, pose , scale, trans, iternum)
 
-        val_pretrained = False
+        val_pretrained = True
         if val_pretrained:
             mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
             ## rotate to gt view

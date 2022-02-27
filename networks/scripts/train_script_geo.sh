@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=0
-NAME='pamir_geometry'
+GPU_ID=3
+NAME='pamir_geometry_epoch30_trainset_hg2'
 USE_ADAPTIVE_GEO_LOSS='True'
 USE_GT_SMPL_VOLUME='False'
 USE_MULTISTAGE_LOSS='True'
@@ -10,10 +10,10 @@ WEIGHT_GEO=1.0
 LR=2e-4
 BATCH_SIZE=3
 LOG_DIR='./results'
-DATASET_DIR='../dataset_example'
+DATASET_DIR='/home/nas1_temp/dataset/Thuman'
 VIEW_NUM_PER_ITEM=360
 POINT_NUM=5000
-NUM_EPOCHS=10
+NUM_EPOCHS=30
 SUMMARY_STEPS=20
 CHECKPOINTS_STEPS=20000
 TEST_STEPS=5000
