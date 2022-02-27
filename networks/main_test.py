@@ -343,16 +343,19 @@ def validation(pretrained_checkpoint_pamir,
     val_data_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8,
                                  worker_init_fn=None, drop_last=False)
 
+    p2s_list=[]
+    chamfer_list=[]
+
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0227_gcmropt_pamir_geometry_gtsmpl_epoch30_trainset_hg2/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0227_256gcmropt_pamir_geometry_gtsmpl_epoch30_trainset_hg2/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
 
-        vol_res = 128
+        vol_res = 256
 
 
         use_gcmr= True
@@ -398,12 +401,9 @@ def validation(pretrained_checkpoint_pamir,
             #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
             #        batch['img'], betas, pose , scale, trans, iternum)
 
-        val_pretrained = True
+        val_pretrained = False
         if val_pretrained:
             mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
-            ## rotate to gt view
-            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
-            mesh['v'] = vertices1[0].squeeze().detach().cpu().numpy()
 
             # save .obj
             mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
@@ -411,30 +411,29 @@ def validation(pretrained_checkpoint_pamir,
 
 
         else:
-            nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], betas,pose, scale , trans,vol_res=vol_res)
-            thresh = 0.5
-            vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
-            mesh = dict()
+            if True:
+                mesh = evaluater.test_pifu(batch['img'],vol_res, betas, pose, scale, trans)
+            else:
 
+                nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], batch['view_id'], betas, pose, scale, trans,
+                                                              vol_res=vol_res)
+                thresh = 0.5
+                vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
+                mesh = dict()
+                mesh['v'] = vertices / vol_res - 0.5
+                mesh['f'] = simplices[:, (1, 0, 2)]
+                mesh['vn'] = normals
 
-
-            mesh['v'] = vertices / vol_res - 0.5
-            ## rotate to gt view
-            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
-            mesh['v'] = vertices1[0].squeeze().detach().cpu().numpy()
-
-            mesh['f'] = simplices[:, (1, 0, 2)]
-            #mesh['vn'] = normals
+                # save .mrc
+                with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
+                                      shape=nerf_sigma.shape, mrc_mode=2) as mrc:
+                    mrc.data[:] = nerf_sigma
 
             # save .obj
             mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
             obj_io.save_obj_data(mesh, mesh_fname)
 
-            # save .mrc
-            if not val_pretrained:
-                with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
-                                      shape=nerf_sigma.shape, mrc_mode=2) as mrc:
-                    mrc.data[:] = nerf_sigma
+
 
             mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
             mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
@@ -450,6 +449,16 @@ def validation(pretrained_checkpoint_pamir,
                                  mesh_fname)
 
 
+            ## rotate to gt view
+            #import pdb; pdb.set_trace()
+            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
+            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
+            obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
+                                  'f': mesh_f[0].squeeze().detach().cpu().numpy(),},
+                                 mesh_fname)
+
+
+
 
         # save_image
         image_fname = os.path.join(out_dir, model_id + '_src_image.png')
@@ -461,16 +470,18 @@ def validation(pretrained_checkpoint_pamir,
         # #measure dist
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nerf_gcmr/'
-        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
 
         tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
-        tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 30000)
+        tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
 
 
         p2s_dist = get_surface_dist(tgt_mesh, src_mesh)
         chamfer_dist= get_chamfer_dist(tgt_mesh, src_mesh)
+        p2s_list.append(p2s_dist)
+        chamfer_list.append(chamfer_dist)
 
         print('p2s:', p2s_dist)
         print('chamfer', chamfer_dist)
@@ -484,10 +495,6 @@ def validation(pretrained_checkpoint_pamir,
 
 
 
-
-
-
-
         #tgt_meshname = '/home/nas1_temp/dataset/Thuman/mesh_data/0525/0525.obj'
         #nonerf_meshname = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/results1/0000_sigma_mesh_nonerf.obj'
         #nerf_meshname = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/results1/0000_sigma_mesh_nerf.obj'
@@ -497,6 +504,13 @@ def validation(pretrained_checkpoint_pamir,
 
 
     print('Testing Done. ')
+    print('p2s mean:',np.mean(p2s_list))
+    print('chamfer mean:', np.mean(chamfer_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("p2s mean: %f \n" % np.mean(p2s_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("chamfer mean: %f \n" % np.mean(chamfer_list))
+
 
 
 if __name__ == '__main__':
