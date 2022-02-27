@@ -143,7 +143,7 @@ class EvaluatorTex(object):
 
 
 
-        num_ray= 5000
+        num_ray= 24000
         img_size = int(img_size / const.down_scale)
         pts_group_num = (img_size * img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
@@ -242,6 +242,8 @@ class EvaluatorTex(object):
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
             return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
+        if return_flow_feature:
+            return pts_clr_pred, pts_clr_warped, pts_final_weights
         return pts_clr_pred, pts_clr_warped #, pts_final_weights
 
 
