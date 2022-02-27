@@ -226,7 +226,7 @@ class Trainer(BaseTrainer):
         ## 1 train geo loss
         _,_,_,_,output_sdf = self.pamir_tex_net.forward(img, vol, pts_occ, pts_occ_proj)
         losses['geo'] = self.geo_loss(output_sdf, gt_ov)
-        #self.loss_weights['geo'] =0
+        self.loss_weights['geo'] =0
 
 
         ## 2 train tex loss
@@ -236,8 +236,8 @@ class Trainer(BaseTrainer):
         losses['tex'] = self.tex_loss(output_clr_, gt_clr)
         losses['tex_final'] = self.tex_loss(output_clr, gt_clr)
         #losses['att'] = self.attention_loss(output_att)
-        #self.loss_weights['tex'] = 0
-        #self.loss_weights['tex_final'] = 0
+        self.loss_weights['tex'] = 0
+        self.loss_weights['tex_final'] = 0
 
         ## 3 train nerf loss
 
@@ -327,6 +327,12 @@ class Trainer(BaseTrainer):
             nerf_output_sigma = torch.gather(torch.cat([nerf_output_sigma.reshape(batch_size, num_ray, num_steps, 1), nerf_output_sigma_fine.reshape(batch_size, num_ray, num_steps, 1)], dim=2), 2, indices)
             sampled_z_vals = torch.gather(all_z_vals, 2, indices)
 
+        else:
+            nerf_output_clr_ = nerf_output_clr_.reshape(batch_size, num_ray, num_steps,3)
+            nerf_output_clr = nerf_output_clr.reshape(batch_size, num_ray, num_steps,3)
+            nerf_output_sigma = nerf_output_sigma.reshape(batch_size, num_ray, num_steps, 1)
+
+
 
 
         all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
@@ -337,8 +343,8 @@ class Trainer(BaseTrainer):
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] =self.tex_loss( feature_pred , gt_clr_nerf)
-        self.loss_weights['nerf_tex'] =0
-        self.loss_weights['nerf_tex_final'] =0
+        #self.loss_weights['nerf_tex'] =0
+        #self.loss_weights['nerf_tex_final'] =0
 
 
 

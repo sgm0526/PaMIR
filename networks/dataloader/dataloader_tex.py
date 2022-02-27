@@ -70,6 +70,8 @@ class TrainingImgDataset(Dataset):
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
             self.len = len(self.data_list) #* self.view_num_per_item
 
+        if False:
+            self.model_2_viewindex = [180] * 25
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
@@ -101,7 +103,7 @@ class TrainingImgDataset(Dataset):
         point_num = self.point_num
 
         if True :
-            #source_view_list = [view_id]
+            #source_view_list = [view_id, view_id]
             source_view_list = [view_id, (view_id+180)%360]
 
         source_img_list=[]
@@ -186,7 +188,8 @@ class TrainingImgDataset(Dataset):
         if self.training:
             target_view_list =list(range(0, self.view_num_per_item)) #0~359
             for i in source_view_list:
-                target_view_list.remove(i)
+                if i in target_view_list:
+                    target_view_list.remove(i)
             target_view_id = random.choice(target_view_list)
 
         else:

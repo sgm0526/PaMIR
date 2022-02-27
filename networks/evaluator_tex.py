@@ -232,6 +232,10 @@ class EvaluatorTex(object):
                         [nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, 1),
                          nerf_output_sigma_fine.reshape(batch_size, num_ray_part, num_steps, 1)], dim=2), 2, indices)
                     sampled_z_vals =torch.gather(all_z_vals, 2, indices)
+                else:
+                    nerf_output_clr_ = nerf_output_clr_.reshape(batch_size, num_ray_part, num_steps, 3)
+                    nerf_output_clr = nerf_output_clr.reshape(batch_size, num_ray_part, num_steps, 3)
+                    nerf_output_sigma = nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, 1)
 
                 all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
                 pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature)

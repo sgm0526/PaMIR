@@ -310,6 +310,7 @@ from skimage import measure
 import numpy as np
 import mrcfile
 from torchvision.utils import save_image
+import cv2 as cv
 def validation(pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex, iternum=100):
     from evaluator_tex import EvaluatorTex
@@ -395,17 +396,25 @@ def validation(pretrained_checkpoint_pamir,
 
         else:
             img_pair = batch['img']
+            # view_id = 180
+            # source_view_list = [view_id, (view_id+180)%360]
+            # source_view_list_ = None
+            # for i in source_view_list:
+            #     if source_view_list_ is None:
+            #         source_view_list_ = torch.tensor(i).unsqueeze(0)
+            #     else:
+            #         source_view_list_ = torch.cat([source_view_list_, torch.tensor(i).unsqueeze(0)], 0)
+            # view_pair = source_view_list_.cuda().unsqueeze(0)
 
-            img_fpath1 = '/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_49/0524/0000.png'
+            img_fpath1 = '/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_49/0501/0180.png'
             img1= cv.imread(img_fpath1).astype(np.uint8)
             img1 = np.float32(cv.cvtColor(img1, cv.COLOR_RGB2BGR)) / 255.
-            img1 =torch.from_numpy(img1.transpose((2, 0, 1)))
-            img_fpath2 = '/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_49/0524/0000_0180.png'
+            img1 =torch.from_numpy(img1.transpose((2, 0, 1))).unsqueeze(0).cuda()
+            img_fpath2 = '/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_49/0501/0180_0000.png'
             img2 = cv.imread(img_fpath2).astype(np.uint8)
             img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
-            img2 =torch.from_numpy(img2.transpose((2, 0, 1)))
+            img2 =torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
             img_pair =torch.stack([img1, img2], 1)
-
 
 
 
@@ -438,7 +447,7 @@ def validation(pretrained_checkpoint_pamir,
             mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
             mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
 
-            mesh_color = evaluater.test_tex_pifu(img_pair, batch['view_id'],mesh_v, betas, pose, scale, trans)
+            mesh_color = evaluater.test_tex_pifu(img_pair,batch['view_id'],mesh_v, betas, pose, scale, trans)
 
             mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
 
@@ -446,8 +455,9 @@ def validation(pretrained_checkpoint_pamir,
                                   'f': mesh_f[0].squeeze().detach().cpu().numpy(),
                                   'vc': mesh_color.squeeze()},
                                  mesh_fname)
-
             import pdb; pdb.set_trace()
+
+
 
 
             ## rotate to gt view
