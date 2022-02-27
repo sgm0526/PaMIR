@@ -338,7 +338,7 @@ def validation(pretrained_checkpoint_pamir,
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
 
-        vol_res = 128
+        vol_res = 256
 
 
         use_gcmr= False
@@ -394,24 +394,29 @@ def validation(pretrained_checkpoint_pamir,
 
 
         else:
-            nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'],batch['view_id'],betas,pose, scale , trans,vol_res=vol_res)
-            thresh = 0.5
-            vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
-            mesh = dict()
-            mesh['v'] = vertices / vol_res - 0.5
-            mesh['f'] = simplices[:, (1, 0, 2)]
-            mesh['vn'] = normals
+            if True:
+                mesh = evaluater.test_pifu(batch['img'],batch['view_id'],vol_res, betas, pose, scale, trans)
+            else:
+
+                nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], batch['view_id'], betas, pose, scale, trans,
+                                                              vol_res=vol_res)
+                thresh = 0.5
+                vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
+                mesh = dict()
+                mesh['v'] = vertices / vol_res - 0.5
+                mesh['f'] = simplices[:, (1, 0, 2)]
+                mesh['vn'] = normals
+
+                # save .mrc
+                with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
+                                      shape=nerf_sigma.shape, mrc_mode=2) as mrc:
+                    mrc.data[:] = nerf_sigma
 
             # save .obj
             mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
             obj_io.save_obj_data(mesh, mesh_fname)
 
 
-            # save .mrc
-            if not val_pretrained:
-                with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
-                                      shape=nerf_sigma.shape, mrc_mode=2) as mrc:
-                    mrc.data[:] = nerf_sigma
 
             mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
             mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
@@ -434,7 +439,6 @@ def validation(pretrained_checkpoint_pamir,
                                   'f': mesh_f[0].squeeze().detach().cpu().numpy(),},
                                  mesh_fname)
 
-        import pdb; pdb.set_trace()
 
 
 
@@ -493,7 +497,7 @@ if __name__ == '__main__':
     geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
 
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/checkpoints/latest.pt'
 
     validation(geometry_model_dir , texture_model_dir)
 
