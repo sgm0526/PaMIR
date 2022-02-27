@@ -401,7 +401,7 @@ def validation(pretrained_checkpoint_pamir,
             #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
             #        batch['img'], betas, pose , scale, trans, iternum)
 
-        val_pretrained = False
+        val_pretrained = True
         if val_pretrained:
             mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
 
