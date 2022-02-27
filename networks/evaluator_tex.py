@@ -256,7 +256,7 @@ class EvaluatorTex(object):
         return pts_clr_pred, pts_clr_warped
 
 
-    def test_nerf_target_sigma(self, img, betas, pose, scale, trans, vol_res):
+    def test_nerf_target_sigma(self, img, view_id, betas, pose, scale, trans, vol_res):
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
@@ -274,15 +274,30 @@ class EvaluatorTex(object):
             vol_res, const.cam_R, const.cam_t, const.cam_f, img.size(2))
 
         pts = torch.from_numpy(pts).unsqueeze(0).to(self.device)
-        pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
+       # pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
+
+
+        pts_list = []
+        pts_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - view_id[:,0 ]
+            pts_ = self.rotate_points(pts, view_diff)
+            pts_proj_= self.project_points(pts_, cam_f, cam_c, cam_tz)
+            pts_list.append(pts_ .unsqueeze(1))
+            pts_proj_list.append(pts_proj_.unsqueeze(1))
+
+        pts = torch.cat(pts_list, 1)
+        pts_proj = torch.cat(pts_proj_list , 1)
+        ##
+
 
         group_size= 10000
-        pts_group_num = (pts.shape[1] + group_size - 1) // group_size
+        pts_group_num = (pts.shape[2] + group_size - 1) // group_size
         pts_clr = []
         for gi in tqdm(range(pts_group_num), desc='Sigma query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            sampled_points = pts[:, (gi * group_size):((gi + 1) * group_size), :] # 1, group_size, num_step, 3
-            sampled_points_proj= pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            sampled_points = pts[:, :,(gi * group_size):((gi + 1) * group_size), :] # 1, group_size, num_step, 3
+            sampled_points_proj= pts_proj[:, :, (gi * group_size):((gi + 1) * group_size), :]
             # sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
 
@@ -291,8 +306,6 @@ class EvaluatorTex(object):
                 # sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
 
-                #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-                #nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points , sampled_points_proj )
 
                 nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, sampled_points, sampled_points_proj)#, img_feat_geo, nerf_feat_occupancy)
@@ -535,7 +548,7 @@ class EvaluatorTex(object):
         return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
 
 
-    def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
+    def test_tex_pifu(self, img, view_id, mesh_v, betas, pose, scale, trans):
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
@@ -547,8 +560,22 @@ class EvaluatorTex(object):
         cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
 
         pts = mesh_v
-        pts_proj = self.forward_project_points(
-            pts, cam_r, cam_t, cam_f, img.size(2))
+        #pts_proj = self.forward_project_points(
+        #    pts, cam_r, cam_t, cam_f, img.size(2))
+
+        pts_list = []
+        pts_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - view_id[:, 0]
+            pts_ = self.rotate_points(pts, view_diff)
+            pts_proj_ = self.project_points(pts_, cam_f, cam_c, cam_tz)
+            pts_list.append(pts_.unsqueeze(1))
+            pts_proj_list.append(pts_proj_.unsqueeze(1))
+
+        pts = torch.cat(pts_list, 1)
+        pts_proj = torch.cat(pts_proj_list, 1)
+
+
         clr = self.forward_infer_color_value_group(
             img, vol, pts, pts_proj, group_size)
         return clr
@@ -583,8 +610,8 @@ class EvaluatorTex(object):
         pts_clr = []
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            pts_group = pts[:, (gi * group_size):((gi + 1) * group_size), :]
-            pts_proj_group = pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            pts_group = pts[:, :,(gi * group_size):((gi + 1) * group_size), :]
+            pts_proj_group = pts_proj[:, :, (gi * group_size):((gi + 1) * group_size), :]
             outputs = self.forward_infer_color_value(
                 img, vol, pts_group, pts_proj_group)
             pts_clr.append(np.squeeze(outputs[0].detach().cpu().numpy()))

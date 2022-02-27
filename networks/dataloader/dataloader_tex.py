@@ -123,24 +123,28 @@ class TrainingImgDataset(Dataset):
 
         pose, betas, trans, scale = self.load_smpl_parameters(data_item)
 
+        pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, 0, point_num)
+        if not self.training:
+            pts = all_pts
+            pts_clr = all_pts_clr
+        pts_ids, pts_occ, pts_ov = self.load_points_occ(data_item, point_num)
+
+
         for i in source_view_list:
             img, mask = self.load_image(data_item, i)
             source_img_list.append(torch.from_numpy(img.transpose((2, 0, 1))))
             source_mask_list.append(torch.from_numpy(mask))
             cam_R, cam_t = self.load_cams(data_item, i)
 
-            pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item,i, point_num)
+
             pts_list.append(torch.from_numpy(pts))
-            if not self.training:
-                pts = all_pts
-                pts_clr = all_pts_clr
             pts_r = self.rotate_points(pts, i)
             pts_proj = self.project_points(pts, cam_R, cam_t, cam_f)
             pts_r_list.append(torch.from_numpy(pts_r))
             pts_proj_list.append(torch.from_numpy(pts_proj))
             pts_clr_list.append(torch.from_numpy(pts_clr))
 
-            pts_ids, pts_occ, pts_ov = self.load_points_occ(data_item, point_num)
+
             pts_occ_r = self.rotate_points(pts_occ, i)
             pts_occ_proj = self.project_points(pts_occ, cam_R, cam_t, cam_f)
             pts_occ_list.append(torch.from_numpy(pts_occ_r ))
