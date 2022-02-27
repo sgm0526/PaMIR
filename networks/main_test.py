@@ -493,7 +493,7 @@ if __name__ == '__main__':
     geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
 
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_24hie0.5_03_occ_2v_alpha/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha/checkpoints/latest.pt'
 
     validation(geometry_model_dir , texture_model_dir)
 
