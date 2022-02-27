@@ -409,6 +409,14 @@ def validation(pretrained_checkpoint_pamir,
             mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
             obj_io.save_obj_data(mesh, mesh_fname)
 
+            ## rotate to gt view
+            # import pdb; pdb.set_trace()
+            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
+            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
+            obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
+                                  'f': mesh['f'] },
+                                 mesh_fname)
+
 
         else:
             if True:
