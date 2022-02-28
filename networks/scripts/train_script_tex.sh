@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=1
-NAME='pamir_onlynerf_0227_24hie0.5_03_occ_2v_alpha_concat_'
+NAME='pamir_nonerf_0227_24hie0.5_03_occ_2v_alpha_concat__'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
