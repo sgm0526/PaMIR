@@ -481,6 +481,12 @@ class EvaluatorTex(object):
             pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(1, num_ray, const.num_steps, -1),
                                                    sampled_z_vals, device=self.device, white_back=False)# white_back=True)
 
+            mask_down = F.interpolate(mask.permute(0, 3, 1, 2), 128)
+            y, x = torch.meshgrid(torch.linspace(-1, 1, 128), torch.linspace(-1, 1, 128))
+            mask_grid = torch.cat([x[...,None], y[...,None]], dim=-1)
+            in_mask = mask_grid[mask_down[0, 0] == 1]
+            dist_mat = torch.cdist(in_mask.cuda(), pred_vert_new_proj[0])
+            min_dist = dist_mat.min(1)[0].mean()
 
 
 
@@ -490,8 +496,7 @@ class EvaluatorTex(object):
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
 
-            loss = loss_fitting  #+ loss_nerf  #loss_fitting * 1.0 +loss_nerf #+ 10*loss_bias
-            #loss = loss_nerf +loss_mask#+ 10*loss_bias #loss_fitting * 1.0 +loss_nerf * 1.0#+ loss_bias * 1.0
+            loss = min_dist
 
             optm.zero_grad()
             loss.backward()
@@ -634,4 +639,95 @@ class EvaluatorTex(object):
         sampled_points_proj = torch.cat([ee[..., None], qq[..., None]], dim=-1)
 
         return sampled_points_proj
+
+
+    def test_pifu(self, img,  vol_res, betas, pose, scale, trans):
+        self.pamir_tex_net.eval()
+        #self.graph_cnn.eval()  # lock BN and dropout
+        #self.smpl_param_regressor.eval()  # lock BN and dropout
+        gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
+        vol = self.voxelization(gt_vert_cam)
+        group_size = 512 * 80
+        grid_ov = self.forward_infer_occupancy_value_grid_octree(img,  vol, vol_res, group_size)
+        vertices, simplices, normals, _ = measure.marching_cubes_lewiner(grid_ov, 0.5)
+
+        mesh = dict()
+        mesh['v'] = vertices / vol_res - 0.5
+        mesh['f'] = simplices[:, (1, 0, 2)]
+        mesh['vn'] = normals
+        return mesh
+
+    def forward_infer_occupancy_value_grid_octree(self, img,  vol, test_res, group_size,
+                                                  init_res=64, ignore_thres=0.05):
+        pts, pts_proj = self.generate_point_grids(
+            test_res, const.cam_R, const.cam_t, const.cam_f, img.size(2))
+        pts = np.reshape(pts, (test_res, test_res, test_res, 3))
+        pts_proj = np.reshape(pts_proj, (test_res, test_res, test_res, 2))
+
+        pts_ov = np.zeros([test_res, test_res, test_res])
+        dirty = np.ones_like(pts_ov, dtype=np.bool)
+        grid_mask = np.zeros_like(pts_ov, dtype=np.bool)
+
+        reso = test_res // init_res
+        while reso > 0:
+            grid_mask[0:test_res:reso, 0:test_res:reso, 0:test_res:reso] = True
+            test_mask = np.logical_and(grid_mask, dirty)
+
+            pts_ = pts[test_mask]
+            pts_proj_ = pts_proj[test_mask]
+            pts_ov[test_mask] = self.forward_infer_occupancy_value_group(
+                img, vol, pts_, pts_proj_, group_size).squeeze()
+
+            if reso <= 1:
+                break
+            for x in range(0, test_res - reso, reso):
+                for y in range(0, test_res - reso, reso):
+                    for z in range(0, test_res - reso, reso):
+                        # if center marked, return
+                        if not dirty[x + reso // 2, y + reso // 2, z + reso // 2]:
+                            continue
+                        v0 = pts_ov[x, y, z]
+                        v1 = pts_ov[x, y, z + reso]
+                        v2 = pts_ov[x, y + reso, z]
+                        v3 = pts_ov[x, y + reso, z + reso]
+                        v4 = pts_ov[x + reso, y, z]
+                        v5 = pts_ov[x + reso, y, z + reso]
+                        v6 = pts_ov[x + reso, y + reso, z]
+                        v7 = pts_ov[x + reso, y + reso, z + reso]
+                        v = np.array([v0, v1, v2, v3, v4, v5, v6, v7])
+                        v_min = v.min()
+                        v_max = v.max()
+                        # this cell is all the same
+                        if (v_max - v_min) < ignore_thres:
+                            pts_ov[x:x + reso, y:y + reso, z:z + reso] = (v_max + v_min) / 2
+                            dirty[x:x + reso, y:y + reso, z:z + reso] = False
+            reso //= 2
+        return pts_ov
+
+    def forward_infer_occupancy_value_group(self, img, vol, pts, pts_proj, group_size):
+        assert isinstance(pts, np.ndarray)
+        assert len(pts.shape) == 2
+        assert pts.shape[1] == 3
+        pts_num = pts.shape[0]
+        pts = torch.from_numpy(pts).unsqueeze(0).to(self.device)
+        pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
+
+
+        pts_group_num = (pts.size()[1] + group_size - 1) // group_size
+        pts_ov = []
+        for gi in tqdm(range(pts_group_num), desc='SDF query'):
+            # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
+            pts_group = pts[:,  (gi * group_size):((gi + 1) * group_size), :]
+            pts_proj_group = pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            outputs = self.forward_infer_occupancy_value(
+                img, pts_group, pts_proj_group, vol)
+            pts_ov.append(np.squeeze(outputs.detach().cpu().numpy()))
+        pts_ov = np.concatenate(pts_ov)
+        pts_ov = np.array(pts_ov)
+        return pts_ov
+
+    def forward_infer_occupancy_value(self, img, pts, pts_proj, vol):
+        return self.pamir_tex_net(img, vol, pts, pts_proj)[-1]
+
+
 
