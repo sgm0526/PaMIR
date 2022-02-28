@@ -149,7 +149,7 @@ def main_test_texture(test_img_dir, out_dir, pretrained_checkpoint_pamir,
 def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex):
     from evaluator_tex import EvaluatorTex
-    from dataloader.dataloader_tex import AllImgDataset
+    from dataloader.dataloader_tex import AllImgDataset, TrainingImgDataset
     dataset = AllImgDataset(
         '/home/nas1_temp/dataset/Thuman', img_h=512, img_w=512,
         testing_res=256,
@@ -157,9 +157,19 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
         load_pts2smpl_idx_wgt=True,
         smpl_data_folder='./data')
 
+    # val_ds = TrainingImgDataset(
+    #     '/home/nas1_temp/dataset/Thuman', img_h=const.img_res, img_w=const.img_res,
+    #     training=False, testing_res=256,
+    #     view_num_per_item=360,
+    #     point_num=5000,
+    #     load_pts2smpl_idx_wgt=True,
+    #     smpl_data_folder='./data')
+
 
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=8,
                                  worker_init_fn=None, drop_last=False)
+    # data_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8,
+    #                              worker_init_fn=None, drop_last=False)
 
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, 'results'), exist_ok=True)
@@ -195,6 +205,12 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
         pred_image_path = os.path.join(out_dir, str(batch['model_id'].item()).zfill(4), 'pred_image')
         attention_path = os.path.join(out_dir, str(batch['model_id'].item()).zfill(4), 'attention')
         weightsum_path = os.path.join(out_dir, str(batch['model_id'].item()).zfill(4), 'weight_sum')
+        # flow_path = os.path.join(out_dir, str(batch['model_id'].item() + 501).zfill(4), 'flow')
+        # feature_path = os.path.join(out_dir, str(batch['model_id'].item() + 501).zfill(4), 'feature')
+        # warped_image_path = os.path.join(out_dir, str(batch['model_id'].item() + 501).zfill(4), 'warped_image')
+        # pred_image_path = os.path.join(out_dir, str(batch['model_id'].item() + 501).zfill(4), 'pred_image')
+        # attention_path = os.path.join(out_dir, str(batch['model_id'].item() + 501).zfill(4), 'attention')
+        # weightsum_path = os.path.join(out_dir, str(batch['model_id'].item() + 501).zfill(4), 'weight_sum')
         os.makedirs(flow_path, exist_ok=True)
         # os.makedirs(feature_path +'/32', exist_ok=True)
         # os.makedirs(feature_path + '/64', exist_ok=True)
@@ -550,6 +566,6 @@ if __name__ == '__main__':
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
 
     # main_test_flow_feature(
-    #     '/home/nas1_temp/dataset/Thuman/output_stage1/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie',
+    #     '/home/nas1_temp/dataset/Thuman/output_stage1/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_val',
     #     pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
     #     pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/0223_checkpoint.pt')

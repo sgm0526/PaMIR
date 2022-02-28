@@ -134,7 +134,9 @@ class TrainingImgDataset(Dataset):
 
         if not self.training:
             target_view_id  = self.model_2_targetviewindex[model_id]
-
+            # target_view_id = view_id + 180
+            # if target_view_id >=360:
+            #     target_view_id -= 360
         if target_view_id == view_id:
             raise NotImplementedError()
 
