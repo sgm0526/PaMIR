@@ -279,12 +279,26 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0228_256gcmropt_pamir_nerf_0223_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_hg/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0228_256gcmropt_debug/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
 
         vol_res = 256
+
+        surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(batch['img'], batch['betas'], batch['pose'], batch['scale'], batch['trans'],
+                                                          torch.ones(batch['img'].shape[0]).cuda() * 249)
+
+        volume_render_pred, volume_render_alpha = evaluater.test_nerf_target(batch['img'], batch['betas'],
+                                                                                     batch['pose'], batch['scale'],
+                                                                                     batch['trans'],
+                                                                                     torch.ones(batch['img'].shape[
+                                                                                                    0]).cuda() *249)
+
+        from torchvision.utils import save_image
+        save_image(surface_render_pred, './surface.png')
+        save_image(volume_render_pred, './volume.png')
+        import pdb; pdb.set_trace()
 
 
         use_gcmr= True

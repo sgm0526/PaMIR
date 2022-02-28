@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=7
-NAME='pamir_nerf_0223_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_hg'
+GPU_ID=1
+NAME='pamir_nerf_0228_24hiesurface_03_occ_inout_hg_th9'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
