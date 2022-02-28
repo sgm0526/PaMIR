@@ -350,12 +350,20 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0227_256gcmropt_pamir_geometry_gtsmpl_epoch30_trainset_hg2/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0228_256gcmropt_debug/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
 
         vol_res = 256
+
+        surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(batch['img'], batch['betas'], batch['pose'], batch['scale'], batch['trans'],
+                                                          torch.ones(batch['img'].shape[0]).cuda() * 0)
+
+        from torchvision.utils import save_image
+        save_image(surface_render_pred, './check.png')
+
+        import pdb; pdb.set_trace()
 
 
         use_gcmr= True
@@ -544,7 +552,7 @@ if __name__ == '__main__':
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/latest.pt'
 
-    # validation(geometry_model_dir , texture_model_dir)
+    validation(geometry_model_dir , texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
@@ -571,7 +579,7 @@ if __name__ == '__main__':
     #                   pretrained_checkpoint_pamir= geometry_model_dir ,
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
 
-    main_test_flow_feature(
-        '/home/nas1_temp/dataset/Thuman/output_stage1/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg',
-        pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
-        pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/0228.pt')
+    # main_test_flow_feature(
+    #     '/home/nas1_temp/dataset/Thuman/output_stage1/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg',
+    #     pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
+    #     pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/0228.pt')
