@@ -30,5 +30,5 @@ dataset_mesh_subfolder = 'mesh_data'
 num_steps = 24 #48
 hierarchical = True #False
 threshold=0.5
-interval=0.01
+interval=0.2
 

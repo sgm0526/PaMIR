@@ -277,15 +277,14 @@ class Trainer(BaseTrainer):
             ray_index = np.random.randint(0, pts_num, 2000)
             pts_world = input_batch['pts_world'][:, ray_index]
 
-            pts_world_list=[]
-            for k in range(batch_size):
-                ray_mask = output_att[k]>0.5
-                surface_vertex = input_batch['pts_world'][k, ray_mask[:,0]]
-                ray_index = np.random.randint(0, surface_vertex.size(0), 1000)
-                pts_world_list.append(surface_vertex[ray_index])
-            pts_world = torch.stack(pts_world_list, 0)
-
-            import pdb; pdb.set_trace()
+            # pts_world_list=[]
+            # for k in range(batch_size):
+            #     ray_mask = output_att[k]>0.3
+            #     surface_vertex = input_batch['pts_world'][k, ray_mask[:,0]]
+            #     ray_index = np.random.randint(0, surface_vertex.size(0), 1000)
+            #     pts_world_list.append(surface_vertex[ray_index])
+            # pts_world = torch.stack(pts_world_list, 0)
+            num_ray = pts_world.size(1)
 
 
             pts_target = self.rotate_points(pts_world, input_batch['target_view_id'])
@@ -300,28 +299,24 @@ class Trainer(BaseTrainer):
 
             ray_d_target = pts_target - cam_t
             ray_d_target = normalize_vecs(ray_d_target)
-            z_vals_ = torch.linspace(const.ray_start, const.ray_end, const.num_steps, device=self.device).reshape(1, 1,
-                                                                                                                  const.num_steps,
-                                                                                                                  1).repeat(
-                batch_size, pts_world.size(1), 1, 1)
+
+            std = const.interval
+            std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
+            z_vals_ = pts_target[:,:,2:3].repeat(1, 1, num_steps) + std_line.to(self.device)
+            z_vals_ = z_vals_.unsqueeze(-1)
+
+            #z_vals_ = torch.linspace(const.ray_start, const.ray_end, const.num_steps, device=self.device).reshape(1, 1,
+            #                                                                                                      const.num_steps,
+            #                                                                                                      1).repeat( batch_size, pts_world.size(1), 1, 1)
+
 
             points = ray_d_target.unsqueeze(2).repeat(1, 1, const.num_steps, 1) * z_vals_
             # points = points.reshape(1, -1, 3)
             points = points + cam_t  # target view!!
             sampled_points = self.rotate_points(points, view_diff)  # source view!!
             # sampled_points_global = self.rotate_points(points, -input_batch['target_view_id'])
-            num_ray = pts_world.size(1)
             sampled_z_vals = z_vals_
             sampled_rays_d_target = ray_d_target
-
-            std = const.interval
-            std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
-            fine_z_vals = z_pred.squeeze(-1).repeat(1, 1, num_steps) + std_line.to(self.device)
-
-            fine_points = sampled_rays_d_target * fine_z_vals[..., None]
-            fine_points[:, :, :, 2] += cam_tz
-            fine_points = self.rotate_points(fine_points, view_diff)
-            fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
 
 
         #sampled_points, sampled_z_vals, sampled_rays_d_target
@@ -329,43 +324,16 @@ class Trainer(BaseTrainer):
         sampled_points_proj = self.project_points(sampled_points, cam_f, cam_c, cam_tz)
         sampled_points = sampled_points.reshape(batch_size, -1, 3)
         sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
-        with torch.no_grad():
-            nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
-                img, vol,  sampled_points, sampled_points_proj)
+        nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+            img, vol, sampled_points, sampled_points_proj)
 
-        alphas = nerf_output_sigma.reshape(batch_size, num_ray, num_steps, -1)
-        threshold =const.threshold
-        sign = (alphas > threshold).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
-            batch_size, num_ray, 1).to(self.device)
-        max_index = sign.unsqueeze(-1).argmax(dim=2)
-        ray_mask = max_index != 0
-        max_index[max_index == 0] += 1
-        start_index = max_index - 1
-        start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
-        end_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
-        z_pred = self.run_Bisection_method(img, vol, start_z_vals, end_z_vals,
-                                           3, sampled_rays_d_target, view_diff, threshold)
 
-        std=const.interval
-        std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
-        fine_z_vals = z_pred.squeeze(-1).repeat(1,1,num_steps) + std_line.to(self.device)
-        fine_z_vals[~ray_mask[...,0]] = sampled_z_vals[0,0,...,0]
-        sampled_rays_d_target = sampled_rays_d_target.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-        fine_points = sampled_rays_d_target * fine_z_vals[..., None]
-        fine_points[:, :, :, 2] += cam_tz
-        fine_points = self.rotate_points(fine_points, view_diff)
-        fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
+        all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1).reshape(batch_size, num_ray,num_steps, 4)
 
-        nerf_output_clr_fine_, nerf_output_clr_fine, _, _, nerf_output_sigma_fine = self.pamir_tex_net.forward(
-            img, vol, fine_points.reshape(batch_size, num_ray * num_steps, 3),
-            fine_points_proj.reshape(batch_size, num_ray * num_steps, 2))
+        pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals , device=self.device, white_back=True)
 
-        all_outputs = torch.cat([nerf_output_clr_fine_, nerf_output_sigma_fine], dim=-1).reshape(batch_size, num_ray,num_steps, 4)
-
-        pixels_pred, _, _ = fancy_integration2(all_outputs, fine_z_vals.unsqueeze(-1) , device=self.device, white_back=True)
-
-        all_outputs = torch.cat([nerf_output_clr_fine, nerf_output_sigma_fine], dim=-1).reshape(batch_size, num_ray,num_steps, 4)
-        feature_pred, _, _ = fancy_integration2(all_outputs, fine_z_vals.unsqueeze(-1) , device=self.device, white_back=True)
+        all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1).reshape(batch_size, num_ray,num_steps, 4)
+        feature_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals , device=self.device, white_back=True)
 
         losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
         losses['nerf_tex_final'] = self.tex_loss(feature_pred, gt_clr_nerf)
