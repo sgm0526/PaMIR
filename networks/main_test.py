@@ -339,7 +339,7 @@ def validation(pretrained_checkpoint_pamir,
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-
+        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization/'
         out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_ours_256gcmroptmask_gttrans__pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
@@ -348,11 +348,11 @@ def validation(pretrained_checkpoint_pamir,
         view_id1 = str(batch['view_id'][:, 0].item()).zfill(4)
         view_id2 = str(batch['view_id'][:, 1].item()).zfill(4)
 
-        img_fpath1 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_80/{model_id}/{view_id1}.png'
+        img_fpath1 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_130/{model_id}/{view_id1}.png'
         img1 = cv.imread(img_fpath1).astype(np.uint8)
         img1 = np.float32(cv.cvtColor(img1, cv.COLOR_RGB2BGR)) / 255.
         img1 = torch.from_numpy(img1.transpose((2, 0, 1))).unsqueeze(0).cuda()
-        img_fpath2 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_80/{model_id}/{view_id1}_{view_id2}.png'
+        img_fpath2 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_130/{model_id}/{view_id1}_{view_id2}.png'
         img2 = cv.imread(img_fpath2).astype(np.uint8)
         img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
         img2 = torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
@@ -427,8 +427,16 @@ def validation(pretrained_checkpoint_pamir,
             scale = batch['scale']
             trans = batch['trans']
 
+        #torch.save(betas.cpu(),  os.path.join(out_dir, model_id+'_betas.pth'))
+        #torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
+        #torch.save(scale.cpu(), os.path.join(out_dir, model_id + '_scale.pth'))
+        #torch.save(trans.cpu(), os.path.join(out_dir, model_id + '_trans.pth'))
+
         if True:
             mesh = evaluater.test_pifu(img_pair, batch['view_id'], vol_res, betas, pose, scale, trans)
+            #mesh = evaluater.test_pifu(torch.stack([img1, img1], 1),
+            #                           torch.cat([batch['view_id'][:, 0:1], batch['view_id'][:, 0:1]], -1), vol_res, betas,
+            #                           pose, scale, trans)
         else:
             vol_res=128
             nerf_sigma = evaluater.test_nerf_target_sigma(img_pair,batch['view_id'],betas, pose, scale, trans, vol_res=vol_res)
@@ -452,7 +460,7 @@ def validation(pretrained_checkpoint_pamir,
         mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
         mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
 
-        mesh_color = evaluater.test_tex_pifu(batch['img'], batch['view_id'], mesh_v, betas, pose, scale, trans)
+        mesh_color = evaluater.test_tex_pifu(img_pair, batch['view_id'], mesh_v, betas, pose, scale, trans)
 
         mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
 
