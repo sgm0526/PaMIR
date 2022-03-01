@@ -643,7 +643,7 @@ class EvaluatorTex(object):
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
 
-            loss = loss_fitting * 1.0 + loss_bias * 1.0
+            loss = min_dist
 
             optm.zero_grad()
             loss.backward()

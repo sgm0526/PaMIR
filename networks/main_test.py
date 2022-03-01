@@ -346,6 +346,10 @@ def validation_pamir(pretrained_checkpoint_pamir,
 
             optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_wokp(
                 batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum) ##not yet
+            #optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_mask(
+            #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+
+
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
@@ -454,7 +458,7 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_ours_256gcmropt_gttrans__pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_ours_256gcmroptmask_gttrans__pamir_onlynerf_0228_24hiesurface_03_occ_inout_hg/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
@@ -633,25 +637,19 @@ if __name__ == '__main__':
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
     # output_dir = './results/test_data_rendered/'
-
     geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
+    #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30_trainset_hg2/checkpoints/latest.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture/checkpoints/latest.pt'
     #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
 
-    #validation_pamir(geometry_model_dir, texture_model_dir)
+    validation_pamir(geometry_model_dir, texture_model_dir)
 
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout/checkpoints/latest.pt'
 
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_nonerf_occ/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr_no3dfeat_nope/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
-    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/latest.pt'
+    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_onlynerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
 
-    validation(geometry_model_dir, texture_model_dir)
+    #validation(geometry_model_dir, texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
