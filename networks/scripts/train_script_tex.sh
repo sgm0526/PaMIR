@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 GPU_ID=0
-NAME='pamir_nerf_0228_24hiesurface_03_occ_inout_hg_newtrain'
+NAME='pamir_nerf_0228_24hiesurface_03_occ_inout_hg'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
