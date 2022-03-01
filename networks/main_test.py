@@ -253,14 +253,16 @@ import numpy as np
 import mrcfile
 from torchvision.utils import save_image
 import open3d
-def validation(pretrained_checkpoint_pamir,
+def validation_pamir(pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex, iternum=100):
-    from evaluator_tex import EvaluatorTex
+
+    from evaluator_tex_pamir import EvaluatorTex as EvaluatorTex
     from evaluator import Evaluator
     from dataloader.dataloader_tex import TrainingImgDataset
     device = torch.device("cuda")
-    evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
-    evaluator_pretrained = Evaluator(device, pretrained_checkpoint_pamir, './results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
+
+    evaluater_tex = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+    evaluator = Evaluator(device, pretrained_checkpoint_pamir, './results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
     val_ds = TrainingImgDataset(
         '/home/nas1_temp/dataset/Thuman', img_h=const.img_res, img_w=const.img_res,
         training=False, testing_res=256,
@@ -275,65 +277,83 @@ def validation(pretrained_checkpoint_pamir,
     p2s_list=[]
     chamfer_list=[]
 
-
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0228_256gcmropt_debug/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_pamir_256gcmropt_gttrans/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
 
         vol_res = 256
 
-        surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(batch['img'], batch['betas'], batch['pose'], batch['scale'], batch['trans'],
-                                                          torch.ones(batch['img'].shape[0]).cuda() * 249)
+        if True:
+            surface_render_pred, surface_render_alpha = evaluater_tex.test_surface_rendering(batch['img'],
+                                                                                             batch['betas'],
+                                                                                             batch['pose'],
+                                                                                             batch['scale'],
+                                                                                             batch['trans'],
+                                                                                             torch.ones(
+                                                                                                 batch['img'].shape[
+                                                                                                     0]).cuda() * 249)
+            image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
+            save_image(surface_render_pred,  image_fname)
 
-        volume_render_pred, volume_render_alpha = evaluater.test_nerf_target(batch['img'], batch['betas'],
-                                                                                     batch['pose'], batch['scale'],
-                                                                                     batch['trans'],
-                                                                                     torch.ones(batch['img'].shape[
-                                                                                                    0]).cuda() *249)
-
-        from torchvision.utils import save_image
-        save_image(surface_render_pred, './surface.png')
-        save_image(volume_render_pred, './volume.png')
-        import pdb; pdb.set_trace()
 
 
         use_gcmr= True
         if use_gcmr :
-            pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
-            pred_smpl = scale * pred_smpl + trans
+            # pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
+            # pred_smpl = scale * pred_smpl + trans
 
-            ##optimization with nerf
+            ##
+            pred_betas, pred_rotmat, _, _, pred_vert_tetsmpl, pred_cam = evaluator.test_gcmr(batch['img'], return_predcam=True)
+
+            gt_trans= batch['trans']
+            cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+
+            with torch.no_grad():
+                pred_smpl_joints = evaluator.tet_smpl.get_smpl_joints(pred_vert_tetsmpl).detach()
+                pred_root = pred_smpl_joints[:, 0:1, :]
+                if gt_trans is not None:
+                    scale = pred_cam[:, 0:1] * cam_c * (cam_tz - gt_trans[:, 0, 2:3]) / cam_f
+                    trans_x = pred_cam[:, 1:2] * cam_c * (
+                            cam_tz - gt_trans[:, 0, 2:3]) * pred_cam[:, 0:1] / cam_f
+                    trans_y = -pred_cam[:, 2:3] * cam_c * (
+                            cam_tz - gt_trans[:, 0, 2:3]) * pred_cam[:, 0:1] / cam_f
+                    trans_z = gt_trans[:, 0, 2:3] + 2 * pred_root[:, 0, 2:3] * scale
+                else:
+                    scale = pred_cam[:, 0:1] * cam_c * cam_tz / cam_f
+                    trans_x = pred_cam[:, 1:2] * cam_c * cam_tz * pred_cam[:, 0:1] / cam_f
+                    trans_y = -pred_cam[:, 2:3] * cam_c * cam_tz * pred_cam[:, 0:1] / cam_f
+                    trans_z = torch.zeros_like(trans_x)
+                scale_ = torch.cat([scale, -scale, -scale], dim=-1).detach().view((-1, 1, 3))
+                trans_ = torch.cat([trans_x, trans_y, trans_z], dim=-1).detach().view((-1, 1, 3))
+
+            scale= scale_
+            trans= trans_
+            pred_smpl = scale * pred_vert_tetsmpl[:, :6890] + trans
+            ##
+
+
+
 
             smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
                 util.read_smpl_constants('./data')
-
             init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl.obj')
             obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                  init_smpl_fname)
 
-            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
-                batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+            optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_wokp(
+                batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum) ##not yet
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                 optm_smpl_fname)
 
 
-            ##optimization end
-            #save_image
-            image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
-            save_image(nerf_image_before, image_fname)
-            image_fname = os.path.join(out_dir, model_id + '_nerf_image_after.png')
-            save_image(nerf_image, image_fname)
-
             betas =optm_betas
             pose = optm_thetas
-            #betas = pred_betas
-            #pose = pred_rotmat
 
         else:
             betas= batch['betas']
@@ -341,72 +361,31 @@ def validation(pretrained_checkpoint_pamir,
             scale = batch['scale']
             trans = batch['trans']
 
-            #optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
-            #        batch['img'], betas, pose , scale, trans, iternum)
+        mesh = evaluator.test_pifu(batch['img'], vol_res, betas, pose, scale, trans)
+        # save .obj
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+        obj_io.save_obj_data(mesh, mesh_fname)
 
-        val_pretrained = False
-        if val_pretrained:
-            mesh = evaluator_pretrained.test_pifu(batch['img'], vol_res, betas,pose, scale ,trans)
+        mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
+        mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
+        mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
 
-            # save .obj
-            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
-            obj_io.save_obj_data(mesh, mesh_fname)
+        mesh_color = evaluater_tex.test_tex_pifu(batch['img'], mesh_v, betas, pose, scale, trans)
+        mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
 
-            ## rotate to gt view
-            # import pdb; pdb.set_trace()
-            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
-            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
-            obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
-                                  'f': mesh['f'] },
-                                 mesh_fname)
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
 
+        ## rotate to gt view
+        # import pdb; pdb.set_trace()
+        vertices1 = evaluater_tex.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
+        obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh['f']},
+                             mesh_fname)
 
-        else:
-            if True:
-                mesh = evaluater.test_pifu(batch['img'],vol_res, betas, pose, scale, trans)
-            else:
-
-                nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'], batch['view_id'], betas, pose, scale, trans,
-                                                              vol_res=vol_res)
-                thresh = 0.5
-                vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
-                mesh = dict()
-                mesh['v'] = vertices / vol_res - 0.5
-                mesh['f'] = simplices[:, (1, 0, 2)]
-                mesh['vn'] = normals
-
-                # save .mrc
-                with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
-                                      shape=nerf_sigma.shape, mrc_mode=2) as mrc:
-                    mrc.data[:] = nerf_sigma
-
-            # save .obj
-            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
-            obj_io.save_obj_data(mesh, mesh_fname)
-
-
-
-            mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
-            mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
-            mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
-
-            mesh_color = evaluater.test_tex_pifu(batch['img'], mesh_v, betas, pose, scale, trans)
-
-            mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
-
-            obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
-                                  'f': mesh_f[0].squeeze().detach().cpu().numpy(),
-                                  'vc': mesh_color.squeeze()},
-                                 mesh_fname)
-
-
-            ## rotate to gt view
-            #import pdb; pdb.set_trace()
-            vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
-            mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
-            obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
-                                  'f': mesh_f[0].squeeze().detach().cpu().numpy(),},
-                                 mesh_fname)
 
 
 
@@ -415,19 +394,12 @@ def validation(pretrained_checkpoint_pamir,
         image_fname = os.path.join(out_dir, model_id + '_src_image.png')
         save_image(batch['img'],  image_fname )
 
-
-
-
-        # #measure dist
-        model_id = str(501 + batch['model_id'].item()).zfill(4)
-        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_nerf_gcmr/'
+        #measure dist
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
-
         tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
         tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
-
 
         p2s_dist = get_surface_dist(tgt_mesh, src_mesh)
         chamfer_dist= get_chamfer_dist(tgt_mesh, src_mesh)
@@ -446,12 +418,198 @@ def validation(pretrained_checkpoint_pamir,
 
 
 
-        #tgt_meshname = '/home/nas1_temp/dataset/Thuman/mesh_data/0525/0525.obj'
-        #nonerf_meshname = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/results1/0000_sigma_mesh_nonerf.obj'
-        #nerf_meshname = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/results1/0000_sigma_mesh_nerf.obj'
-        #pretrained_meshname = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_thuman_0525_gtsmpl/results1/0000.obj'
+    print('Testing Done. ')
+    print('p2s mean:',np.mean(p2s_list))
+    print('chamfer mean:', np.mean(chamfer_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("p2s mean: %f \n" % np.mean(p2s_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("chamfer mean: %f \n" % np.mean(chamfer_list))
+
+def validation(pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex, iternum=100):
+    from evaluator_tex import EvaluatorTex
+
+    from dataloader.dataloader_tex import TrainingImgDataset
+    device = torch.device("cuda")
+    evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+
+    val_ds = TrainingImgDataset(
+        '/home/nas1_temp/dataset/Thuman', img_h=const.img_res, img_w=const.img_res,
+        training=False, testing_res=256,
+        view_num_per_item=360,
+        point_num=5000,
+        load_pts2smpl_idx_wgt=True,
+        smpl_data_folder='./data')
+
+    val_data_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8,
+                                 worker_init_fn=None, drop_last=False)
+
+    p2s_list=[]
+    chamfer_list=[]
+
+    for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_ours_256gcmropt_gttrans/'
+        os.makedirs(out_dir, exist_ok=True)
+        model_id = str(501 + batch['model_id'].item()).zfill(4)
+        print(model_id)
+
+        vol_res = 256
+
+        if True:
+            surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(batch['img'], batch['betas'], batch['pose'], batch['scale'], batch['trans'],
+                                                              torch.ones(batch['img'].shape[0]).cuda() * 249)
+
+            volume_render_pred, volume_render_alpha = evaluater.test_nerf_target(batch['img'], batch['betas'],
+                                                                                         batch['pose'], batch['scale'],
+                                                                                         batch['trans'],
+                                                                                         torch.ones(batch['img'].shape[
+                                                                                                        0]).cuda() *249)
+
+            image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
+            save_image(surface_render_pred, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
+            save_image(volume_render_pred, image_fname)
 
 
+        use_gcmr= True
+        if use_gcmr :
+            #pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
+            #pred_smpl = scale * pred_smpl + trans
+
+            ##
+            pred_betas, pred_rotmat, _, _, pred_vert_tetsmpl, pred_cam = evaluator.test_gcmr(batch['img'],
+                                                                                             return_predcam=True)
+
+            gt_trans = batch['trans']
+            cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+
+            with torch.no_grad():
+                pred_smpl_joints = evaluator.tet_smpl.get_smpl_joints(pred_vert_tetsmpl).detach()
+                pred_root = pred_smpl_joints[:, 0:1, :]
+                if gt_trans is not None:
+                    scale = pred_cam[:, 0:1] * cam_c * (cam_tz - gt_trans[:, 0, 2:3]) / cam_f
+                    trans_x = pred_cam[:, 1:2] * cam_c * (
+                            cam_tz - gt_trans[:, 0, 2:3]) * pred_cam[:, 0:1] / cam_f
+                    trans_y = -pred_cam[:, 2:3] * cam_c * (
+                            cam_tz - gt_trans[:, 0, 2:3]) * pred_cam[:, 0:1] / cam_f
+                    trans_z = gt_trans[:, 0, 2:3] + 2 * pred_root[:, 0, 2:3] * scale
+                else:
+                    scale = pred_cam[:, 0:1] * cam_c * cam_tz / cam_f
+                    trans_x = pred_cam[:, 1:2] * cam_c * cam_tz * pred_cam[:, 0:1] / cam_f
+                    trans_y = -pred_cam[:, 2:3] * cam_c * cam_tz * pred_cam[:, 0:1] / cam_f
+                    trans_z = torch.zeros_like(trans_x)
+                scale_ = torch.cat([scale, -scale, -scale], dim=-1).detach().view((-1, 1, 3))
+                trans_ = torch.cat([trans_x, trans_y, trans_z], dim=-1).detach().view((-1, 1, 3))
+
+            scale = scale_
+            trans = trans_
+            pred_smpl = scale * pred_vert_tetsmpl[:, :6890] + trans
+            ##
+
+            ##optimization with nerf
+
+            smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+                util.read_smpl_constants('./data')
+
+            init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl.obj')
+            obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                 init_smpl_fname)
+
+            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
+                batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+
+            optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
+            obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                optm_smpl_fname)
+
+            ##optimization end
+            #save_image
+            image_fname = os.path.join(out_dir, model_id + '_nerf_image_before.png')
+            save_image(nerf_image_before, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_nerf_image_after.png')
+            save_image(nerf_image, image_fname)
+
+            betas =optm_betas
+            pose = optm_thetas
+
+        else:
+            betas= batch['betas']
+            pose = batch['pose']
+            scale = batch['scale']
+            trans = batch['trans']
+
+        if True:
+            mesh = evaluater.test_pifu(batch['img'], vol_res, betas, pose, scale, trans)
+        else:
+            vol_res=128
+            nerf_sigma = evaluater.test_nerf_target_sigma(batch['img'],betas, pose, scale, trans, vol_res=vol_res)
+            thresh = 0.5
+            vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
+            mesh = dict()
+            mesh['v'] = vertices / vol_res - 0.5
+            mesh['f'] = simplices[:, (1, 0, 2)]
+            mesh['vn'] = normals
+
+            # save .mrc
+            with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
+                                  shape=nerf_sigma.shape, mrc_mode=2) as mrc:
+                mrc.data[:] = nerf_sigma
+
+        # save .obj
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+        obj_io.save_obj_data(mesh, mesh_fname)
+
+        mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
+        mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
+        mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
+
+        mesh_color = evaluater.test_tex_pifu(batch['img'], mesh_v, betas, pose, scale, trans)
+
+        mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
+
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
+
+        ## rotate to gt view
+        # import pdb; pdb.set_trace()
+        vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
+        obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh['f']},
+                             mesh_fname)
+
+
+        # save_image
+        image_fname = os.path.join(out_dir, model_id + '_src_image.png')
+        save_image(batch['img'],  image_fname )
+
+        #measure dist
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
+
+        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
+        tgt_mesh = trimesh.load(tgt_meshname)
+        src_mesh = trimesh.load(mesh_fname)
+        tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
+
+        p2s_dist = get_surface_dist(tgt_mesh, src_mesh)
+        chamfer_dist= get_chamfer_dist(tgt_mesh, src_mesh)
+        p2s_list.append(p2s_dist)
+        chamfer_list.append(chamfer_dist)
+
+        print('p2s:', p2s_dist)
+        print('chamfer', chamfer_dist)
+
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("model id: %s \n" % model_id)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("p2s: %f \n" % p2s_dist)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("chamfer: %f \n" % chamfer_dist)
 
 
     print('Testing Done. ')
@@ -473,8 +631,11 @@ if __name__ == '__main__':
     # input_image_dir = './results/test_data_rendered/'
     # output_dir = './results/test_data_rendered/'
 
-    #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
-    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
+    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture/checkpoints/latest.pt'
+    #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
+
+    validation_pamir(geometry_model_dir, texture_model_dir)
 
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_rayontarget_rayonpts_occ_attloss_inout/checkpoints/latest.pt'
@@ -485,9 +646,9 @@ if __name__ == '__main__':
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0218data_48_03_nonerf_occ_attloss_inout_usegcmr/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0216data_48_03_rayontarget_rayonpts_occ_nogeoloss_notexloss//checkpoints/latest.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0223_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_hg/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
 
-    validation(geometry_model_dir , texture_model_dir)
+    #validation(geometry_model_dir, texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)

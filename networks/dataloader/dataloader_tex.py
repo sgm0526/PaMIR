@@ -62,10 +62,10 @@ class TrainingImgDataset(Dataset):
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
 
         if self.training:
-            self.data_list = load_data_list(dataset_dir, 'data_list_train_new.txt')
+            self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
             self.len = len(self.data_list) * self.view_num_per_item
         else:
-            self.data_list = load_data_list(dataset_dir, 'data_list_test_new.txt')
+            self.data_list = load_data_list(dataset_dir, 'data_list_test.txt')
             self.model_2_viewindex = [138,155,195,73,303,225,240,333,136,197,222,272,291,298,147,38,194,275,348,40,1,13,325,273,186]
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
             self.len = len(self.data_list) #* self.view_num_per_item

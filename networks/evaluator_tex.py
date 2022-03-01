@@ -141,8 +141,6 @@ class EvaluatorTex(object):
         #batch_size, 512*512, num_step, 3
 
 
-
-
         num_ray= 5000
         pts_group_num = (img_size *img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
@@ -332,9 +330,11 @@ class EvaluatorTex(object):
                 alphas = nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, -1)
 
                 # max_index = abs(alphas - 0.5).argmin(dim=2)
-                sign = (alphas > 0.5).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
+                threshold = const.threshold
+                sign = (alphas > threshold).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
                     batch_size, num_ray_part, 1).to(self.device)
                 max_index = sign.unsqueeze(-1).argmax(dim=2)
+                ray_mask = max_index != 0
                 max_index[max_index == 0] += 1
                 start_index = max_index - 1
                 start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
@@ -345,7 +345,7 @@ class EvaluatorTex(object):
 
                 #z_pred = start_z_vals
                 z_pred = self.run_Bisection_method(img, vol, start_z_vals, end_z_vals,
-                                                3, sampled_rays_d_world, view_diff)
+                                                3, sampled_rays_d_world, view_diff, threshold)
                 #z_pred = self.run_Secant_method(img, vol, start_alphas_vals, end_alphas_vals, start_z_vals, end_z_vals,
                 #                                3, sampled_rays_d_world, view_diff)
 
@@ -358,20 +358,20 @@ class EvaluatorTex(object):
                 pixels_pred, feature_pred, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, z_point ,z_point_proj )
 
+                pixels_pred[~ray_mask[..., 0]] = 1
+                feature_pred[~ray_mask[..., 0]] = 1
+
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
             pts_clr_warped.append(feature_pred.detach().cpu())
 
-            # pts_clr_pred.append(pixels_pred)
-            # pts_clr_warped.append(pixels_warped)
         ##
         pts_clr_pred = torch.cat(pts_clr_pred, dim=1)
         pts_clr_pred = pts_clr_pred.permute(0, 2, 1).reshape(batch_size, pts_clr_pred.size(2), img_size, img_size)
         pts_clr_warped = torch.cat(pts_clr_warped, dim=1)
         pts_clr_warped = pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
-        # pts_clr = pts_clr.permute(2,0,1
 
-        return pts_clr_pred, pts_clr_warped  # , pts_final_weights
+        return pts_clr_pred, pts_clr_warped
 
     def test_nerf_target_sigma(self, img, betas, pose, scale, trans, vol_res):
         #self.pamir_net.eval()
@@ -643,7 +643,7 @@ class EvaluatorTex(object):
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
 
-            loss = min_dist
+            loss = loss_fitting * 1.0 + loss_bias * 1.0
 
             optm.zero_grad()
             loss.backward()
