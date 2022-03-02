@@ -20,6 +20,7 @@ import math
 from util.base_trainer import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
 from network.arch import PamirNet, TexPamirNetAttention, TexPamirNetAttention_nerf, NeuralRenderer, ResDecoder, NeuralRenderer_coord
+from network.discriminator import ProgressiveDiscriminator
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from neural_voxelization_layer.voxelize import Voxelization
 from util.img_normalization import ImgNormalizerForResnet
@@ -100,17 +101,18 @@ class Trainer(BaseTrainer):
         self.criterion_geo = nn.MSELoss().to(self.device)
         self.criterion_tex = nn.L1Loss().to(self.device)
 
-        self.TrainGAN = False
+        self.TrainGAN = True
 
         if self.TrainGAN:
             ## add for discriminator
             self.pamir_tex_discriminator = PatchDiscriminator().to(self.device)
+            #self.pamir_tex_discriminator = ProgressiveDiscriminator().to(self.device)
             self.optm_pamir_tex_discriminator = torch.optim.Adam(
                 params=list(self.pamir_tex_discriminator.parameters()), lr=float(self.options.lr)
             )
 
             # Pack models and optimizers in a dict - necessary for checkpointing
-            self.models_dict = {'pamir_tex_net': self.pamir_tex_net, 'pamir_tex_NR': self.NR,'pamir_tex_discriminator': self.pamir_tex_discriminator}
+            self.models_dict = {'pamir_tex_net': self.pamir_tex_net, 'pamir_tex_discriminator': self.pamir_tex_discriminator}
             self.optimizers_dict = {'optimizer_pamir_net': self.optm_pamir_tex_net, 'optimizer_pamir_discriminator': self.optm_pamir_tex_discriminator}
         else:
             # Pack models and optimizers in a dict - necessary for checkpointing
@@ -273,7 +275,7 @@ class Trainer(BaseTrainer):
         # 1, img_size*img_size, num_steps, 3
         points_cam[:, :, :, 2] += cam_tz
         points_cam_source = self.rotate_points(points_cam, view_diff)
-        if True:
+        if False:
             num_ray = 2000
             ray_index = np.random.randint(0, img_size * img_size, num_ray)
             sampled_points = points_cam_source[:, ray_index]
@@ -281,6 +283,21 @@ class Trainer(BaseTrainer):
             sampled_z_vals = z_vals[:, ray_index]
             sampled_rays_d_target = rays_d_cam[:, ray_index]
             gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)[:, ray_index]
+
+        if True:
+            patch_size = 64
+            gt_clr_nerf = target_img.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
+            num_ray = patch_size * patch_size
+            ray_index = self.sample_ray_index(batch_size,img_size, target_mask, patch_size=patch_size)
+
+            sampled_points = torch.gather(points_cam_source, 1,
+                                          ray_index[:, :, None, None].repeat(1, 1, num_steps, 3))
+            sampled_z_vals = torch.gather(z_vals, 1,
+                                          ray_index[:, :, None, None].repeat(1, 1, num_steps, 1))
+            sampled_rays_d_target = torch.gather(rays_d_cam, 1,
+                                                ray_index[:, :, None].repeat(1, 1, 3))
+            gt_clr_nerf = torch.gather(gt_clr_nerf, 1,
+                                       ray_index[:, :, None].repeat(1, 1, 3))
 
 
         #sampled_points, sampled_z_vals, sampled_rays_d_target
@@ -333,8 +350,9 @@ class Trainer(BaseTrainer):
 
 
         if self.TrainGAN:
+            pixels_pred=pixels_pred.permute(0, 2, 1).reshape(batch_size, 3, patch_size, patch_size)
             ## GAN loss
-            fake_score = self.pamir_tex_discriminator(pixels_high)
+            fake_score = self.pamir_tex_discriminator(pixels_pred)
             losses['g_loss'] = self.gan_loss(fake_score, should_be_classified_as_real=True ).mean()
 
 
@@ -354,12 +372,44 @@ class Trainer(BaseTrainer):
 
         ## update discriminator
 
+        # if self.TrainGAN:
+        #     gt_clr_nerf = gt_clr_nerf .permute(0, 2, 1).reshape(batch_size, 3, patch_size, patch_size)
+        #     with torch.no_grad():
+        #         pixels_pred_fake = pixels_pred
+        #     fake_score_d = self.pamir_tex_discriminator(pixels_pred_fake)
+        #     real_score_d = self.pamir_tex_discriminator(gt_clr_nerf )
+        #     total_loss_d = 0.
+        #     losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
+        #     total_loss_d+= losses['d_loss']
+        #
+        #     self.optm_pamir_tex_discriminator.zero_grad()
+        #     total_loss_d.backward()
+        #     self.optm_pamir_tex_discriminator.step()
+
         if self.TrainGAN:
-            fake_score_d = self.pamir_tex_discriminator(pixels_high.detach())
-            real_score_d = self.pamir_tex_discriminator(F.interpolate(target_img, size=self.decoder_output_size))
+            real_d_input = gt_clr_nerf.permute(0, 2, 1).reshape(batch_size, 3, patch_size, patch_size)
+            fake_d_input =pixels_pred.detach().clone()
+
+            fake_score_d = self.pamir_tex_discriminator(fake_d_input )
+            real_d_input.requires_grad = True
+            real_score_d = self.pamir_tex_discriminator(real_d_input)
             total_loss_d = 0.
             losses['d_loss'] =self.gan_loss(real_score_d, should_be_classified_as_real=True ).mean() + self.gan_loss(fake_score_d, should_be_classified_as_real=False ).mean()
-            total_loss_d+= losses['d_loss']
+
+            if True: # add R1 regularization
+                grad_real, = torch.autograd.grad(
+                    outputs=real_score_d.sum(),
+                    inputs=real_d_input,
+                    create_graph=True
+                )
+                lambda_R1 = 10
+                #grad_penalty = (grad_real.view(grad_real.size(0), -1).norm(2, dim=1) ** 2).mean()
+                grad_penalty = (grad_real.reshape(grad_real.size(0), -1).norm(2, dim=1) ** 2).mean()
+                grad_penalty = 0.5 * lambda_R1 * grad_penalty
+                losses['d_loss_gp'] = grad_penalty
+
+
+            total_loss_d+= losses['d_loss'] + losses['d_loss_gp']
 
             self.optm_pamir_tex_discriminator.zero_grad()
             total_loss_d.backward()
@@ -433,27 +483,38 @@ class Trainer(BaseTrainer):
 
 
         return z_pred.data
-    def sample_ray_index(self, img_size, mask, patch_size=32):
+    def sample_ray_index(self, batch_size,img_size, mask=None, patch_size=32):
         """Computes per-sample loss of the occupancy value"""
-        batch_size = mask.shape[0]
-        x, y = torch.meshgrid(torch.linspace(0,img_size-1, img_size), torch.linspace(0,img_size-1, img_size))
-        grid = torch.cat([x.unsqueeze(-1), y.unsqueeze(-1)], dim=-1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()
-        grid_for_max = grid * mask[...,:1]
-        x_max = grid_for_max[...,0].max(1)[0].max(1)[0]
-        y_max = grid_for_max[...,1].max(1)[0].max(1)[0]
-        grid_for_min = grid * mask[...,:1] + img_size * (~mask[...,:1].bool()).float()
-        x_min = grid_for_min[...,0].min(1)[0].min(1)[0]
-        y_min = grid_for_min[...,1].min(1)[0].min(1)[0]
-        ray_grid = torch.range(0, img_size * img_size - 1)
-        ray_grid = ray_grid.reshape(img_size, img_size)
-        ray_index_list = []
-        for i in range(batch_size):
-            tl_x = torch.randint(int(x_min[i].item()), int((x_max[i]-patch_size).item()), [1])
-            tl_y = torch.randint(int(y_min[i].item()), int((y_max[i]-patch_size).item()), [1])
-            ray_index_list.append(ray_grid[tl_x:tl_x + patch_size, tl_y:tl_y + patch_size].unsqueeze(0))
+        if mask is not None:
+            x, y = torch.meshgrid(torch.linspace(0, img_size - 1, img_size), torch.linspace(0, img_size - 1, img_size))
+            grid = torch.cat([x.unsqueeze(-1), y.unsqueeze(-1)], dim=-1).unsqueeze(0).repeat(batch_size, 1, 1, 1).cuda()
+            grid_for_max = grid * mask[..., :1]
+            x_max = grid_for_max[..., 0].max(1)[0].max(1)[0]
+            y_max = grid_for_max[..., 1].max(1)[0].max(1)[0]
+            grid_for_min = grid * mask[..., :1] + img_size * (~mask[..., :1].bool()).float()
+            x_min = grid_for_min[..., 0].min(1)[0].min(1)[0]
+            y_min = grid_for_min[..., 1].min(1)[0].min(1)[0]
+            ray_grid = torch.range(0, img_size * img_size - 1)
+            ray_grid = ray_grid.reshape(img_size, img_size)
+            ray_index_list = []
+            for i in range(batch_size):
+                tl_x = torch.randint(int(x_min[i].item()), int((x_max[i] - patch_size).item()), [1])
+                tl_y = torch.randint(int(y_min[i].item()), int((y_max[i] - patch_size).item()), [1])
+                ray_index_list.append(ray_grid[tl_x:tl_x + patch_size, tl_y:tl_y + patch_size].unsqueeze(0))
+        else:
+            ray_grid = torch.range(0, img_size * img_size - 1)
+            ray_grid = ray_grid.reshape(img_size, img_size)
+            ray_index_list = []
+            for i in range(batch_size):
+                tl_x = torch.randint(0, ((img_size - 1) - patch_size), [1])
+                tl_y = torch.randint(0, ((img_size - 1) - patch_size), [1])
+                ray_index_list.append(ray_grid[tl_x:tl_x + patch_size, tl_y:tl_y + patch_size].unsqueeze(0))
+
         ray_index = torch.cat(ray_index_list,dim=0)
 
         return ray_index.reshape(batch_size, -1).type(torch.int64).cuda()
+
+
 
     def gan_loss(self, pred, should_be_classified_as_real):
         bs = pred.size(0)

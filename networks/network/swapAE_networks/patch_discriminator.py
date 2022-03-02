@@ -176,7 +176,7 @@ class PatchDiscriminator(nn.Module):
     def __init__(self ):
         super().__init__()
         channel_multiplier = 2 #self.opt.netPatchD_scale_capacity
-        size = 128 #self.opt.patch_size
+        size =64# 32
         max_nc = 512
         channels = {
             4: min(max_nc, int(256 * channel_multiplier)),
