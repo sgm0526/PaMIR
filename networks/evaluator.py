@@ -89,7 +89,7 @@ class Evaluator(object):
         self.graph_cnn.load_state_dict(data['graph_cnn'])
         self.smpl_param_regressor.load_state_dict(data['smpl_param_regressor'])
 
-    def test_gcmr(self, img):
+    def test_gcmr(self, img, return_predcam=False):
         self.graph_cnn.eval()
         self.smpl_param_regressor.eval()
 
@@ -100,6 +100,8 @@ class Evaluator(object):
         # camera coordinate conversion
         cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
         scale_, trans_ = self.forward_coordinate_conversion(cam_f, cam_tz, cam_c, pred_cam)
+        if return_predcam:
+            return pred_betas, pred_rotmat, scale_, trans_, pred_vert_tetsmpl, pred_cam
         return pred_betas, pred_rotmat, scale_, trans_, pred_vert_tetsmpl[:, :6890]
 
     def test_pifu(self, img, vol_res, betas, pose, scale, trans):
