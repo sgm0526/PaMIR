@@ -261,7 +261,7 @@ class PamirNet(BaseNetwork):
         # self.mlp = MLP()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.add_module('hg', hg2.HourglassNet(4, 3, 128, self.feat_ch_2D))
+        self.add_module('hg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         self.add_module('mlp', MLP(self.feat_ch_2D + self.feat_ch_3D, 1, weight_norm=False))
 

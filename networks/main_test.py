@@ -376,14 +376,14 @@ def validation_pamir(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_pamir_256gcmropt_gttrans/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0302_pamir_256gcmroptmask_gttrans__pamir_geometry_gtsmpl_epoch30_trainset_hg2/'
         os.makedirs(out_dir, exist_ok=True)
         model_id = str(501 + batch['model_id'].item()).zfill(4)
         print(model_id)
 
         vol_res = 256
 
-        if True:
+        if False:
             surface_render_pred, surface_render_alpha = evaluater_tex.test_surface_rendering(batch['img'],
                                                                                              batch['betas'],
                                                                                              batch['pose'],
@@ -440,10 +440,10 @@ def validation_pamir(pretrained_checkpoint_pamir,
             obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                  init_smpl_fname)
 
-            optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_wokp(
-                batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum) ##not yet
-            #optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_mask(
-            #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+            #optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_wokp(
+            #    batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum) ##not yet
+            optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_mask(
+                batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
 
 
@@ -733,19 +733,19 @@ if __name__ == '__main__':
     # output_dir = './results/test_data_real/'
     # input_image_dir = './results/test_data_rendered/'
     # output_dir = './results/test_data_rendered/'
-    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
-    #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30_trainset_hg2/checkpoints/2022_02_25_09_59_41.pt'
+    #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
+    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30_trainset_hg2/checkpoints/2022_02_25_09_59_41.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture/checkpoints/latest.pt'
 
 
-    #validation_pamir(geometry_model_dir, texture_model_dir)
+    validation_pamir(geometry_model_dir, texture_model_dir)
 
 
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_02_24_19_21_39.pt'
 
-    validation(geometry_model_dir, texture_model_dir)
+    #validation(geometry_model_dir, texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
