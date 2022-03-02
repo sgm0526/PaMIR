@@ -133,10 +133,10 @@ class TrainingImgDataset(Dataset):
             target_view_id+=1
 
         if not self.training:
-            target_view_id  = self.model_2_targetviewindex[model_id]
-            # target_view_id = view_id + 180
-            # if target_view_id >=360:
-            #     target_view_id -= 360
+            # target_view_id  = self.model_2_targetviewindex[model_id]
+            target_view_id = view_id + 180
+            if target_view_id >=360:
+                target_view_id -= 360
         if target_view_id == view_id:
             raise NotImplementedError()
 
@@ -458,7 +458,7 @@ class AllImgDataset(Dataset):
 
 
         self.data_list_all = load_data_list(dataset_dir, 'data_list_all.txt')
-        self.data_list = self.data_list_all[342:]
+        self.data_list = self.data_list_all[501:]
         # self.data_list = self.data_list_all[260:]
         # self.data_list = self.data_list_all[:260]
         #self.data_list = self.data_list_all
@@ -469,7 +469,7 @@ class AllImgDataset(Dataset):
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
-        self.J_dirs = jmdata['J_dirs']
+        self.J_dirs = jmdata['J_dirs'].cuda()
         self.J_template = jmdata['J_template']
 
         # some default parameters for testing
@@ -492,7 +492,7 @@ class AllImgDataset(Dataset):
         #     view_id = self.model_2_viewindex[model_id]
 
 
-        model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 342
+        model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 501
         # model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
         view_id = self.source_view_list[(item % (len(self.target_view_diff) * len(self.source_view_list))) // len(self.target_view_diff)]
         target_view_id_ind = (item % (len(self.target_view_diff) * len(self.source_view_list))) % len(self.target_view_diff)
