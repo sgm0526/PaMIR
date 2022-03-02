@@ -293,42 +293,35 @@ class Trainer(BaseTrainer):
             nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol,  sampled_points, sampled_points_proj)
 
-        alphas = nerf_output_sigma.reshape(batch_size, num_ray, num_steps, -1)
-        threshold =const.threshold
-        sign = (alphas > threshold).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
-            batch_size, num_ray, 1).to(self.device)
-        max_index = sign.unsqueeze(-1).argmax(dim=2)
-        ray_mask = max_index != 0
-        max_index[max_index == 0] += 1
-        start_index = max_index - 1
-        start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
-        end_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
-        z_pred = self.run_Bisection_method(img, vol, start_z_vals, end_z_vals,
-                                           3, sampled_rays_d_target, view_diff, threshold)
+            alphas = nerf_output_sigma.reshape(batch_size, num_ray, num_steps, -1)
+            threshold =const.threshold
+            sign = (alphas > threshold).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
+                batch_size, num_ray, 1).to(self.device)
+            max_index = sign.unsqueeze(-1).argmax(dim=2)
+            ray_mask = max_index != 0
+            max_index[max_index == 0] += 1
+            start_index = max_index - 1
+            start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+            end_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+            z_pred = self.run_Bisection_method(img, vol, start_z_vals, end_z_vals,
+                                               5, sampled_rays_d_target, view_diff, threshold)
 
-        std=const.interval
-        std_line = torch.linspace(-std / 2, std / 2, num_steps)[None,][None,].repeat(batch_size, num_ray, 1)
-        fine_z_vals = z_pred.squeeze(-1).repeat(1,1,num_steps) + std_line.to(self.device)
-        fine_z_vals[~ray_mask[...,0]] = sampled_z_vals[0,0,...,0]
-        sampled_rays_d_target = sampled_rays_d_target.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-        fine_points = sampled_rays_d_target * fine_z_vals[..., None]
-        fine_points[:, :, :, 2] += cam_tz
-        fine_points = self.rotate_points(fine_points, view_diff)
-        fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
+            p_mid = sampled_rays_d_target.unsqueeze(-2) * z_pred
+            p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
+            z_point = self.rotate_points(p_mid, view_diff).reshape(batch_size, num_ray, 3)
+            z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz).reshape(batch_size,
+                                                                                                        num_ray, 2)
 
-        nerf_output_clr_fine_, nerf_output_clr_fine, _, _, nerf_output_sigma_fine = self.pamir_tex_net.forward(
-            img, vol, fine_points.reshape(batch_size, num_ray * num_steps, 3),
-            fine_points_proj.reshape(batch_size, num_ray * num_steps, 2))
+        pixels_pred, feature_pred, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+            img, vol, z_point.detach(), z_point_proj.detach())
 
-        all_outputs = torch.cat([nerf_output_clr_fine_, nerf_output_sigma_fine], dim=-1).reshape(batch_size, num_ray,num_steps, 4)
+        #pixels_pred[~ray_mask[..., 0]] = 1
+        #feature_pred[~ray_mask[..., 0]] = 1
 
-        pixels_pred, _, _ = fancy_integration2(all_outputs, fine_z_vals.unsqueeze(-1) , device=self.device, white_back=True)
-
-        all_outputs = torch.cat([nerf_output_clr_fine, nerf_output_sigma_fine], dim=-1).reshape(batch_size, num_ray,num_steps, 4)
-        feature_pred, _, _ = fancy_integration2(all_outputs, fine_z_vals.unsqueeze(-1) , device=self.device, white_back=True)
-
-        losses['nerf_tex'] = self.tex_loss(pixels_pred, gt_clr_nerf)
-        losses['nerf_tex_final'] = self.tex_loss(feature_pred, gt_clr_nerf)
+        losses['nerf_tex'] = self.tex_loss(pixels_pred[ray_mask[..., 0]], gt_clr_nerf[ray_mask[..., 0]])
+        losses['nerf_tex_final'] = self.tex_loss(feature_pred[ray_mask[..., 0]], gt_clr_nerf[ray_mask[..., 0]])
+        #self.loss_weights['nerf_tex'] = 0
+        #self.loss_weights['nerf_tex_final'] = 0
 
 
 
