@@ -376,9 +376,10 @@ def validation_pamir(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0302_pamir_256gcmroptmask_gttrans__pamir_geometry_gtsmpl_epoch30_trainset_hg2/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask_gttrans__pamir_geometry_gtsmpl_epoch30_trainset_hg2_2022_02_25_11_28_01/'
         os.makedirs(out_dir, exist_ok=True)
-        model_id = str(501 + batch['model_id'].item()).zfill(4)
+        #model_id = str(501 + batch['model_id'].item()).zfill(4)
+        model_id = (str(501 + batch['model_id'].item())+'_'+str(batch['view_id'].item())).zfill(4)
         print(model_id)
 
         vol_res = 256
@@ -496,7 +497,8 @@ def validation_pamir(pretrained_checkpoint_pamir,
 
         #measure dist
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
-        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
+        model_number = str(501 + batch['model_id'].item()).zfill(4)
+        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_number}/{model_number}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
         tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
@@ -554,9 +556,10 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0302_ours_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         os.makedirs(out_dir, exist_ok=True)
-        model_id = str(501 + batch['model_id'].item()).zfill(4)
+        # model_id = str(501 + batch['model_id'].item()).zfill(4)
+        model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'].item())).zfill(4)
         print(model_id)
 
         vol_res = 256
@@ -693,8 +696,8 @@ def validation(pretrained_checkpoint_pamir,
 
         #measure dist
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
-
-        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
+        model_number = str(501 + batch['model_id'].item()).zfill(4)
+        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_number}/{model_number}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
         tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
@@ -734,7 +737,7 @@ if __name__ == '__main__':
     # input_image_dir = './results/test_data_rendered/'
     # output_dir = './results/test_data_rendered/'
     #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
-    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30_trainset_hg2/checkpoints/2022_02_25_09_59_41.pt'
+    geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30_trainset_hg2/checkpoints/2022_02_25_11_28_01.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture/checkpoints/latest.pt'
 
 
@@ -743,7 +746,7 @@ if __name__ == '__main__':
 
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_02_24_19_21_39.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_02_25_01_56_52.pt'
 
     #validation(geometry_model_dir, texture_model_dir)
 

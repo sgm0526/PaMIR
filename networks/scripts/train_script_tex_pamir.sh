@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=1
-NAME='pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie'
+GPU_ID=5
+NAME='pamir_texture_epoch200_trainset'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -20,7 +20,7 @@ TEST_STEPS=5000
 NUM_WORKERS=8
 
 
-CUDA_VISIBLE_DEVICES=${GPU_ID} OMP_NUM_TRHEAD=1 python main_train_tex.py \
+CUDA_VISIBLE_DEVICES=${GPU_ID} OMP_NUM_TRHEAD=1 python main_train_tex_pamir.py \
 --name ${NAME} \
 --log_dir ${LOG_DIR} \
 --pretrained_gcmr_checkpoint ${PRETRAINED_GCMR_CHECKPOINT} \
@@ -39,3 +39,8 @@ CUDA_VISIBLE_DEVICES=${GPU_ID} OMP_NUM_TRHEAD=1 python main_train_tex.py \
 --test_steps ${TEST_STEPS} \
 --num_workers ${NUM_WORKERS} \
 --shuffle_train --debug
+
+
+
+
+
