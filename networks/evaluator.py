@@ -181,6 +181,121 @@ class Evaluator(object):
 
         return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
 
+    def optm_smpl_param_wokp(self, img, betas, pose, scale, trans, iter_num):
+        assert iter_num > 0
+        self.pamir_net.eval()
+        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
+        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
+
+        # convert rotmat to theta
+        rotmat_host = pose.detach().cpu().numpy().squeeze()
+        theta_host = []
+        for r in rotmat_host:
+            theta_host.append(cv.Rodrigues(r)[0])
+        theta_host = np.asarray(theta_host).reshape((1, -1))
+        theta = torch.from_numpy(theta_host).to(self.device)
+
+        # construct parameters
+        vert_cam = scale * self.tet_smpl(theta, betas) + trans
+        vol = self.voxelization(vert_cam)
+        theta_new = torch.nn.Parameter(theta)
+        betas_new = torch.nn.Parameter(betas)
+        theta_orig = theta_new.clone().detach()
+        betas_orig = betas_new.clone().detach()
+        optm = torch.optim.Adam(params=(theta_new, ), lr=2e-3)
+
+        for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
+            theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
+            vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
+            vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
+
+
+            if i % 20 == 0:
+                vol = self.voxelization(vert_tetsmpl_new_cam.detach())
+
+            pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
+            pred_vert_new_proj = self.forward_point_sample_projection(
+                pred_vert_new_cam, cam_r, cam_t, cam_f, cam_c)
+            smpl_sdf = self.forward_infer_occupancy_value(
+                img, pred_vert_new_cam, pred_vert_new_proj, vol)
+
+            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
+            loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
+                        torch.mean((betas_orig - betas_new) ** 2) * 0.01
+
+
+            loss = loss_fitting * 1.0 + loss_bias * 1.0 #+ loss_kp * 500.0 + loss_bias2 * 5
+
+            optm.zero_grad()
+            loss.backward()
+            optm.step()
+            # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
+            #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
+
+        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
+
+    def optm_smpl_param_mask(self, img, mask, betas, pose, scale, trans, iter_num):
+        assert iter_num > 0
+        self.pamir_net.eval()
+        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
+        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
+
+        # convert rotmat to theta
+        rotmat_host = pose.detach().cpu().numpy().squeeze()
+        theta_host = []
+        for r in rotmat_host:
+            theta_host.append(cv.Rodrigues(r)[0])
+        theta_host = np.asarray(theta_host).reshape((1, -1))
+        theta = torch.from_numpy(theta_host).to(self.device)
+
+        # construct parameters
+        vert_cam = scale * self.tet_smpl(theta, betas) + trans
+        vol = self.voxelization(vert_cam)
+        theta_new = torch.nn.Parameter(theta)
+        betas_new = torch.nn.Parameter(betas)
+        theta_orig = theta_new.clone().detach()
+        betas_orig = betas_new.clone().detach()
+        optm = torch.optim.Adam(params=(theta_new, ), lr=2e-3)
+
+        for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
+            theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
+            vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
+            vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
+
+
+            if i % 20 == 0:
+                vol = self.voxelization(vert_tetsmpl_new_cam.detach())
+
+            pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
+            pred_vert_new_proj = self.forward_point_sample_projection(
+                pred_vert_new_cam, cam_r, cam_t, cam_f, cam_c)
+            smpl_sdf = self.forward_infer_occupancy_value(
+                img, pred_vert_new_cam, pred_vert_new_proj, vol)
+
+            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
+            loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
+                        torch.mean((betas_orig - betas_new) ** 2) * 0.01
+
+            mask_down = F.interpolate(mask.permute(0, 3, 1, 2), 128)
+            y, x = torch.meshgrid(torch.linspace(-1, 1, 128), torch.linspace(-1, 1, 128))
+            mask_grid = torch.cat([x[..., None], y[..., None]], dim=-1)
+            in_mask = mask_grid[mask_down[0, 0] == 1]
+            dist_mat = torch.cdist(in_mask.cuda(), pred_vert_new_proj[0])
+            min_dist = dist_mat.min(1)[0].mean()
+
+
+            loss = min_dist #loss_fitting * 1.0 + loss_bias * 1.0 #+ loss_kp * 500.0 + loss_bias2 * 5
+
+            optm.zero_grad()
+            loss.backward()
+            optm.step()
+            # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
+            #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
+
+        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
+
     def generate_point_grids(self, vol_res, cam_R, cam_t, cam_f, img_res):
         x_coords = np.array(range(0, vol_res), dtype=np.float32)
         y_coords = np.array(range(0, vol_res), dtype=np.float32)
