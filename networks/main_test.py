@@ -83,6 +83,99 @@ def main_test_wo_gt_smpl_with_optm(test_img_dir, out_dir, pretrained_checkpoint,
     print('Testing Done. ')
 
 
+def inference_pamir(test_img_dir, pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex, iternum=100):
+    from evaluator_tex_pamir import EvaluatorTex as EvaluatorTex
+    from evaluator import Evaluator
+
+    from dataloader.dataloader_testing import TestingImgLoader
+
+    smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+        util.read_smpl_constants('./data')
+
+    out_dir = os.path.join(test_img_dir, 'outputs_pamir1')
+    os.makedirs(out_dir, exist_ok=True)
+
+    device = torch.device("cuda")
+    loader = TestingImgLoader(test_img_dir, 512, 512, white_bg=True)
+
+    evaluater_tex = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+    evaluator = Evaluator(device, pretrained_checkpoint_pamir, './results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
+
+
+    for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        print(batch['img_dir'])
+        img_dir = batch['img_dir'][0]
+        model_id = os.path.split(img_dir)[1][:-4]
+
+        vol_res = 256
+
+        if False:
+            surface_render_pred, surface_render_alpha = evaluater_tex.test_surface_rendering(batch['img'], batch['betas'],
+                                                                                         batch['pose'], batch['scale'],
+                                                                                         batch['trans'],
+                                                                                         torch.ones(batch['img'].shape[
+                                                                                                        0]).cuda() * 249)
+
+            volume_render_pred, volume_render_alpha = evaluater_tex.test_nerf_target(batch['img'], batch['betas'],
+                                                                                 batch['pose'], batch['scale'],
+                                                                                 batch['trans'],
+                                                                                 torch.ones(batch['img'].shape[
+                                                                                                0]).cuda() * 249)
+
+            image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
+            save_image(surface_render_pred, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
+            save_image(volume_render_pred, image_fname)
+
+        ##gcmr_inference
+        pred_betas, pred_rotmat, scale, trans, pred_smpl =evaluator.test_gcmr(batch['img'])
+        pred_smpl = scale * pred_smpl + trans
+
+        smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+            util.read_smpl_constants('./data')
+
+        init_smpl_fname = os.path.join(out_dir, model_id + '_init_smpl.obj')
+        obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                             init_smpl_fname)
+
+        optm_thetas, optm_betas, optm_smpl = evaluator.optm_smpl_param_wokp(
+            batch['img'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
+
+        optm_smpl_fname = os.path.join(out_dir, model_id + '_optm_smpl.obj')
+        obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                             optm_smpl_fname)
+
+        ##optimization end
+
+        betas = optm_betas
+        pose = optm_thetas
+
+
+        mesh = evaluator.test_pifu(batch['img'], vol_res, betas, pose, scale, trans)
+
+        # save .obj
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+        obj_io.save_obj_data(mesh, mesh_fname)
+
+        mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
+        mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
+        mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
+
+        mesh_color = evaluater_tex.test_tex_pifu(batch['img'], mesh_v, betas, pose, scale, trans)
+
+        mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
+
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
+
+
+
+    print('Testing Done. ')
+
 def inference(test_img_dir, pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex, iternum=100):
     from evaluator import Evaluator
@@ -886,17 +979,18 @@ if __name__ == '__main__':
     # output_dir = './results/test_data_rendered/'
     #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
     geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30_trainset_hg2/checkpoints/2022_02_25_11_28_01.pt'
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture/checkpoints/latest.pt'
+    #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_texture_epoch200_trainset/checkpoints/2022_03_03_12_36_06.pt'
 
     #validation_pamir(geometry_model_dir, texture_model_dir)
-
+    inference_pamir('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir, texture_model_dir)
 
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0225_48_03_rayontarget_rayonpts_occ_attloss_inout_24hiefirstbin_hg/checkpoints/latest.pt'
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_02_25_01_56_52.pt'
 
-    validation(geometry_model_dir, texture_model_dir)
-    #inference('/home/nas1_temp/dataset/deepfashion/our_test/image', geometry_model_dir, texture_model_dir)
+    #validation(geometry_model_dir, texture_model_dir)
+    #inference('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir, texture_model_dir)
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
     # main_test_with_gt_smpl(input_image_dir,
