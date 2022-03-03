@@ -50,6 +50,7 @@ class TestingImgDataset(Dataset):
         super(TestingImgDataset, self).__init__()
         self.img_h = img_h
         self.img_w = img_w
+        dataset_dir = os.path.join(dataset_dir, 'image')
         self.dataset_dir = dataset_dir
         data_list = glob.glob(os.path.join(dataset_dir, '*.png')) + glob.glob(os.path.join(dataset_dir, '*.jpg'))
         data_list = [d for d in data_list if not d.endswith('_mask.png')]
