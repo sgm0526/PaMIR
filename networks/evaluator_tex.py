@@ -228,7 +228,8 @@ class EvaluatorTex(object):
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
             return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
-
+        if return_flow_feature:
+            return pts_clr_pred, pts_clr_warped, pts_final_weights
         return pts_clr_pred, pts_clr_warped
     def run_Secant_method(self, img, vol, f_low, f_high, z_low, z_high,n_secant_steps, sampled_rays_d_world, view_diff, threshold):
 

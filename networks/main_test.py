@@ -366,6 +366,76 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
 
     import pdb; pdb.set_trace()
     print('Testing Done. ')
+
+
+def inference_main_test_flow_feature(test_img_dir, pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex, iternum=100):
+    from evaluator import Evaluator
+    from evaluator_tex import EvaluatorTex
+    from dataloader.dataloader_testing import TestingImgLoader
+
+    smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+        util.read_smpl_constants('./data')
+
+    out_dir = os.path.join(test_img_dir, 'stage1_outputs')
+    os.makedirs(out_dir, exist_ok=True)
+
+    device = torch.device("cuda")
+    loader = TestingImgLoader(test_img_dir, 512, 512, white_bg=True)
+
+    evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+
+
+    for step, batch in enumerate(tqdm(loader, desc='Testing', total=len(loader), initial=0)):
+
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        print(batch['img_dir'])
+        img_dir = batch['img_dir'][0]
+        model_id = os.path.split(img_dir)[1][:-4]
+
+        vol_res = 256
+
+        if True:
+            batch['betas'] = torch.load(os.path.join(test_img_dir, 'outputs', model_id+'_betas.pth')).cuda()
+            batch['pose'] = torch.load(os.path.join(test_img_dir, 'outputs', model_id+'_pose.pth')).cuda()
+            batch['scale'] = torch.load(os.path.join(test_img_dir, 'outputs', model_id+'_scale.pth')).cuda()
+            batch['trans'] = torch.load(os.path.join(test_img_dir, 'outputs', model_id+'_trans.pth')).cuda()
+        nerf_color, nerf_color_warped, weight_sum = evaluater.test_nerf_target(batch['img'], batch['betas'],
+                                                                               batch['pose'], batch['scale'],
+                                                                               batch['trans'], torch.Tensor([-180]).cuda(),
+                                                                               return_flow_feature=True)
+        vol = nerf_color_warped[:, :128].numpy()[0]
+        flow = nerf_color[:, :2]
+        nerf_pts_tex = nerf_color[:, 2:5]
+        nerf_attention= nerf_color_warped[:, -1:]
+        warped_image = F.grid_sample(batch['img'].cpu(), flow.permute(0, 2, 3, 1))
+
+        flow_path = os.path.join(out_dir, model_id, 'flow')
+        feature_path = os.path.join(out_dir, model_id, 'feature')
+        warped_image_path = os.path.join(out_dir, model_id, 'warped_image')
+        pred_image_path = os.path.join(out_dir, model_id, 'pred_image')
+        attention_path = os.path.join(out_dir, model_id, 'attention')
+        weightsum_path = os.path.join(out_dir, model_id, 'weight_sum')
+
+        os.makedirs(flow_path, exist_ok=True)
+        # os.makedirs(feature_path +'/32', exist_ok=True)
+        # os.makedirs(feature_path + '/64', exist_ok=True)
+        os.makedirs(feature_path + '/128', exist_ok=True)
+        os.makedirs(pred_image_path, exist_ok=True)
+        os.makedirs(warped_image_path, exist_ok=True)
+        os.makedirs(attention_path, exist_ok=True)
+        os.makedirs(weightsum_path, exist_ok=True)
+        file_name = str(0).zfill(4) + '_' + str(0).zfill(4)
+        save_image(torch.cat([(flow / 2 + 0.5), torch.zeros((flow.size(0), 1, flow.size(2), flow.size(3)))], dim=1),
+                   os.path.join(flow_path, file_name + '.png'))
+        save_image(warped_image, os.path.join(warped_image_path, file_name + '.png'))
+        save_image(nerf_attention, os.path.join(attention_path, file_name + '.png'))
+        save_image(nerf_pts_tex, os.path.join(pred_image_path, file_name + '.png'))
+        save_image(weight_sum, os.path.join(weightsum_path, file_name + '.png'))
+        np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::2, ::2])
+
+
+    print('Testing Done. ')
 def main_test_sigma(test_img_dir, out_dir, pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex):
     from evaluator_tex import EvaluatorTex
@@ -922,7 +992,11 @@ if __name__ == '__main__':
     #                   pretrained_checkpoint_pamir= geometry_model_dir ,
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
 
-    #main_test_flow_feature(
+    # main_test_flow_feature(
     #    '/home/nas1_temp/dataset/Thuman/output_stage1/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_val_GCMR',
     #    pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
     #    pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/0223_checkpoint.pt')
+    #
+
+    # inference_main_test_flow_feature('/home/nas1_temp/dataset/deepfashion/our_test/', geometry_model_dir, texture_model_dir)
+
