@@ -502,7 +502,8 @@ def validation_pamir(pretrained_checkpoint_pamir,
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
         out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmropt_gttrans__pamir_geometry_gtsmpl_epoch30_trainset_hg2_2022_02_25_11_28_01/'
-        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_gtsmpl__pamir_geometry_gtsmpl_epoch30_trainset_hg2_2022_02_25_11_28_01/'
+        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_geometry_gtsmpl_epoch30_trainset_hg2_2022_02_25_11_28_01/'
+
         os.makedirs(out_dir, exist_ok=True)
         #model_id = str(501 + batch['model_id'].item()).zfill(4)
         model_id = (str(501 + batch['model_id'].item())+'_'+str(batch['view_id'].item())).zfill(4)
@@ -510,7 +511,11 @@ def validation_pamir(pretrained_checkpoint_pamir,
 
         vol_res = 256
 
-        if False:
+
+        if True:
+            targetview = 180
+            out_dir = f'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_render{targetview}__pamir_geometry_gtsmpl_epoch30_trainset_hg2_2022_02_25_11_28_01/'
+            os.makedirs(out_dir, exist_ok=True)
             surface_render_pred, surface_render_alpha = evaluater_tex.test_surface_rendering(batch['img'],
                                                                                              batch['betas'],
                                                                                              batch['pose'],
@@ -518,9 +523,18 @@ def validation_pamir(pretrained_checkpoint_pamir,
                                                                                              batch['trans'],
                                                                                              torch.ones(
                                                                                                  batch['img'].shape[
-                                                                                                     0]).cuda() * 249)
+                                                                                                     0]).cuda() * targetview)
+
+            volume_render_pred, volume_render_alpha =evaluater_tex.test_nerf_target(batch['img'], batch['betas'],
+                                                                                 batch['pose'], batch['scale'],
+                                                                                 batch['trans'],
+                                                                                 torch.ones(batch['img'].shape[
+                                                                                                0]).cuda() * targetview)
             image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
-            save_image(surface_render_pred,  image_fname)
+            save_image(surface_render_alpha, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
+            save_image(volume_render_alpha, image_fname)
+            continue
 
 
 
@@ -691,20 +705,24 @@ def validation(pretrained_checkpoint_pamir,
 
         vol_res = 256
 
-        if False:
+        if True:
+            targetview=180
+            out_dir = f'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_render{targetview}__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+            os.makedirs(out_dir, exist_ok=True)
             surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(batch['img'], batch['betas'], batch['pose'], batch['scale'], batch['trans'],
-                                                              torch.ones(batch['img'].shape[0]).cuda() * 249)
+                                                              torch.ones(batch['img'].shape[0]).cuda() * targetview)
 
             volume_render_pred, volume_render_alpha = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                                                                          batch['pose'], batch['scale'],
                                                                                          batch['trans'],
                                                                                          torch.ones(batch['img'].shape[
-                                                                                                        0]).cuda() *249)
+                                                                                                        0]).cuda() *targetview)
 
             image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
             save_image(surface_render_pred, image_fname)
             image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
             save_image(volume_render_pred, image_fname)
+            continue
 
 
         use_gcmr= True
@@ -877,8 +895,8 @@ if __name__ == '__main__':
     #texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0228_24hiesurface_03_occ_inout_hg/checkpoints/latest.pt'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_02_25_01_56_52.pt'
 
-    #validation(geometry_model_dir, texture_model_dir)
-    inference('/home/nas1_temp/dataset/deepfashion/our_test/image', geometry_model_dir, texture_model_dir)
+    validation(geometry_model_dir, texture_model_dir)
+    #inference('/home/nas1_temp/dataset/deepfashion/our_test/image', geometry_model_dir, texture_model_dir)
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
     # main_test_with_gt_smpl(input_image_dir,
