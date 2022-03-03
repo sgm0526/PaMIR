@@ -75,12 +75,13 @@ class TestingImgDataset(Dataset):
         data_item = self.data_list[item]
         data_fd, img_fname = os.path.split(data_item)
 
-        img = self.load_image(data_item)
+        img , mask= self.load_image(data_item)
 
         return_dict = {
             'img_id': item,
             'img_dir': data_item,
             'img': torch.from_numpy(img.transpose((2, 0, 1))),
+            'mask': torch.from_numpy(mask),
         }
 
         kpt_fname = data_item[:-4] + '_keypoints.json'
@@ -135,7 +136,7 @@ class TestingImgDataset(Dataset):
         if self.white_bg:
             img = img + (1 - msk)
         # img = cv.resize(img, (self.img_w, self.img_h))
-        return img
+        return img, msk
 
     def load_smpl_parameters(self, data_item):
         with open(data_item, 'rb') as fp:
