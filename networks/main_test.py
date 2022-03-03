@@ -311,6 +311,111 @@ import numpy as np
 import mrcfile
 from torchvision.utils import save_image
 import cv2 as cv
+from os import listdir
+def inference(test_img_dir,pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex, iternum=100):
+    #/home/nas1_temp/dataset/deepfashion/our_test
+    from evaluator_tex import EvaluatorTex
+    from evaluator import Evaluator
+
+
+    device = torch.device("cuda")
+    evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+    evaluator_pretrained = Evaluator(device, pretrained_checkpoint_pamir, './results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
+    out_dir = os.path.join(test_img_dir, 'stage3_outputs')
+    os.makedirs(out_dir, exist_ok=True)
+
+    #import pdb; pdb.set_trace()
+    folder_list= listdir(os.path.join(test_img_dir, 'stage2_outputs'))
+    for i in folder_list:
+        model_id= i
+        img_fpath1 = os.path.join(test_img_dir,'stage2_outputs', i, '0000.png')
+        img1 = cv.imread(img_fpath1).astype(np.uint8)
+        img1 = np.float32(cv.cvtColor(img1, cv.COLOR_RGB2BGR)) / 255.
+        img1 = torch.from_numpy(img1.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        img_fpath2 = os.path.join(test_img_dir, 'stage2_outputs', i, '0000_0180.png')
+        img2 = cv.imread(img_fpath2).astype(np.uint8)
+        img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
+        img2 = torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        img_pair = torch.stack([img1, img2], 1)
+        mask1_fpath1 =  os.path.join(test_img_dir,'image', i)+'_mask.png'
+        msk = cv.imread(mask1_fpath1, cv.IMREAD_GRAYSCALE).astype(np.uint8)
+        msk = np.float32(msk) / 255
+        msk = np.reshape(msk, [img1.size(2), img1.size(2), 1])
+        #import pdb; pdb.set_trace()
+        mask1 = torch.from_numpy(msk).unsqueeze(0).cuda()
+
+        view_id = torch.cat([torch.ones(img1.shape[0], 1).cuda() * 0, torch.ones(img1.shape[0],1 ).cuda() * 180],1)
+
+        vol_res = 256
+
+        pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(img_pair[:,0])
+        pred_smpl = scale * pred_smpl + trans
+
+        ##optimization with nerf
+
+        smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+            util.read_smpl_constants('./data')
+
+        init_smpl_fname = os.path.join(out_dir, model_id + '_init_smpl.obj')
+        obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                             init_smpl_fname)
+
+        optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
+            img_pair[:, 0],  mask1 , pred_betas, pred_rotmat, scale[:, 0], trans[:, 0],
+            iter_num=iternum)
+
+        optm_smpl_fname = os.path.join(out_dir, model_id + '_optm_smpl.obj')
+        obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                             optm_smpl_fname)
+
+        ##optimization end
+        betas = optm_betas
+        pose = optm_thetas
+
+
+        if True:
+            mesh = evaluater.test_pifu(img_pair, view_id , vol_res, betas, pose, scale, trans)
+            #mesh = evaluater.test_pifu(torch.stack([img1, img1], 1),
+            #                           torch.cat([batch['view_id'][:, 0:1], batch['view_id'][:, 0:1]], -1), vol_res, betas,
+            #                           pose, scale, trans)
+        else:
+            vol_res=128
+            nerf_sigma = evaluater.test_nerf_target_sigma(img_pair,view_id ,betas, pose, scale, trans, vol_res=vol_res)
+            thresh = 0.5
+            vertices, simplices, normals, _ = measure.marching_cubes_lewiner(np.array(nerf_sigma), thresh)
+            mesh = dict()
+            mesh['v'] = vertices / vol_res - 0.5
+            mesh['f'] = simplices[:, (1, 0, 2)]
+            mesh['vn'] = normals
+
+            # save .mrc
+            with mrcfile.new_mmap(os.path.join(out_dir, model_id + '_sigma_mesh.mrc'), overwrite=True,
+                                  shape=nerf_sigma.shape, mrc_mode=2) as mrc:
+                mrc.data[:] = nerf_sigma
+
+        # save .obj
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+        obj_io.save_obj_data(mesh, mesh_fname)
+
+        mesh_v, mesh_f = mesh['v'].astype(np.float32), mesh['f'].astype(np.int32)
+        mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
+        mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
+
+        mesh_color = evaluater.test_tex_pifu(img_pair,view_id , mesh_v, betas, pose, scale, trans)
+
+        mesh_fname = mesh_fname.replace('.obj', '_tex.obj')
+
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
+
+
+
+
+
+
 
 def validation(pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex, iternum=100):
@@ -530,7 +635,8 @@ if __name__ == '__main__':
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/checkpoints/latest.pt'
 
-    validation(geometry_model_dir , texture_model_dir)
+    #validation(geometry_model_dir , texture_model_dir)
+    inference('/home/nas1_temp/dataset/deepfashion/our_test',geometry_model_dir, texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
