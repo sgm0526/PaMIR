@@ -445,7 +445,7 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v/'
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask_gttrans_amir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat_2022_03_02_06_24_00/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationv2_256gcmroptmask_gttrans_pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat_2022_03_02_06_24_00/'
         os.makedirs(out_dir, exist_ok=True)
         model_num = str(501 + batch['model_id'].item()).zfill(4)
         model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'][:,0].item())).zfill(4)
@@ -470,7 +470,7 @@ def validation(pretrained_checkpoint_pamir,
 
 
 
-        use_gcmr= True
+        use_gcmr= False
         if use_gcmr :
             #pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
             #pred_smpl = scale * pred_smpl + trans
@@ -517,6 +517,7 @@ def validation(pretrained_checkpoint_pamir,
             optm_thetas, optm_betas, optm_smpl = evaluater.optm_smpl_param(
                 batch['img'][:,0], batch['mask'][:,0], pred_betas, pred_rotmat, scale[:,0], trans[:,0], iter_num=iternum)
 
+
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                 optm_smpl_fname)
@@ -528,10 +529,14 @@ def validation(pretrained_checkpoint_pamir,
             pose = optm_thetas
 
         else:
-            betas= batch['betas']
-            pose = batch['pose']
-            scale = batch['scale']
-            trans = batch['trans']
+            #betas= batch['betas']
+            #pose = batch['pose']
+            #scale = batch['scale']
+            #trans = batch['trans']
+            betas = torch.load(os.path.join('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v', f'{model_id}_betas.pth')).cuda()
+            pose =torch.load(os.path.join('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v', f'{model_id}_pose.pth')).cuda()
+            scale =  torch.load(os.path.join('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v', f'{model_id}_scale.pth')).cuda()
+            trans =  torch.load(os.path.join('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v', f'{model_id}_trans.pth')).cuda()
 
         # torch.save(betas.cpu(),  os.path.join(out_dir, model_id+'_betas.pth'))
         # torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
