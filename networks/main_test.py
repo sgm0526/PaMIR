@@ -662,6 +662,9 @@ def validation_pamir(pretrained_checkpoint_pamir,
 
     p2s_list=[]
     chamfer_list=[]
+    psnr_list = []
+    ssim_list = []
+    lpips_list = []
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
@@ -678,8 +681,7 @@ def validation_pamir(pretrained_checkpoint_pamir,
 
         vol_res = 256
 
-
-        if False:
+        if True:
             targetview = 180
             out_dir = f'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_render{targetview}__pamir_geometry_gtsmpl_epoch30_trainset_hg2_2022_02_25_11_28_01/'
             os.makedirs(out_dir, exist_ok=True)
@@ -697,6 +699,23 @@ def validation_pamir(pretrained_checkpoint_pamir,
                                                                                  batch['trans'],
                                                                                  torch.ones(batch['img'].shape[
                                                                                                 0]).cuda() * targetview)
+
+            psnr = metrics.PSNR()(surface_render_alpha.cuda(), batch['target_img'])
+            ssim = metrics.SSIM()(surface_render_alpha.cuda(), batch['target_img'])
+            lpips = metrics.LPIPS(True)(surface_render_alpha.cuda(), batch['target_img'])
+            psnr_list.append(psnr.item())
+            ssim_list.append(ssim.item())
+            lpips_list.append(lpips.item())
+
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("model id: %s \n" % model_id)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("psnr: %f \n" % psnr)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("ssim : %f \n" % ssim)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("lpips : %f \n" % lpips)
+
             image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
             save_image(surface_render_alpha, image_fname)
             image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
@@ -856,11 +875,21 @@ def validation_pamir(pretrained_checkpoint_pamir,
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("chamfer mean: %f \n" % np.mean(chamfer_list))
 
+    print('psnr mean:', np.mean(psnr_list))
+    print('ssim mean:', np.mean(ssim_list))
+    print('lpips mean:', np.mean(lpips_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("'psnr mean: %f \n" % np.mean(psnr_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("ssim mean: %f \n" %  np.mean(ssim_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("lpips mean: %f \n" % np.mean(lpips_list))
+
 def validation(pretrained_checkpoint_pamir,
                       pretrained_checkpoint_pamirtex, iternum=100):
     from evaluator_tex import EvaluatorTex
 
-    from dataloader.dataloader_tex import TrainingImgDataset
+    from dataloader.dataloader_tex import TrainingImgDataset, TrainingImgDataset_deephuman
     device = torch.device("cuda")
     evaluater = EvaluatorTex(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
 
@@ -878,11 +907,18 @@ def validation(pretrained_checkpoint_pamir,
     val_data_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8,
                                  worker_init_fn=None, drop_last=False)
 
+
+
     p2s_list=[]
     chamfer_list=[]
+    psnr_list = []
+    ssim_list = []
+    lpips_list = []
+
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+
 
         out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptonlykp_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
@@ -908,28 +944,39 @@ def validation(pretrained_checkpoint_pamir,
                                                                                          torch.ones(batch['img'].shape[
                                                                                                         0]).cuda() *targetview)
 
-            mse= metrics.MSE()
-            mse(surface_render_alpha.cuda(), batch['target_img'])
+            psnr=  metrics.PSNR()(surface_render_alpha.cuda(), batch['target_img'])
+            ssim = metrics.SSIM()(surface_render_alpha.cuda(), batch['target_img'])
+            lpips = metrics.LPIPS(True)(surface_render_alpha.cuda(), batch['target_img'])
+            psnr_list.append(psnr.item())
+            ssim_list.append(ssim.item())
+            lpips_list.append(lpips.item())
 
 
-
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("model id: %s \n" % model_id)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("psnr: %f \n" % psnr)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("ssim : %f \n" % ssim )
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("lpips : %f \n" % lpips )
 
             image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
-            save_image(surface_render_pred, image_fname)
+            save_image(surface_render_alpha, image_fname)
             image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
-            save_image(volume_render_pred, image_fname)
+            save_image(volume_render_alpha, image_fname)
             continue
 
 
-        use_gcmr= False
+        use_gcmr= True
         if use_gcmr :
-            out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_pamiroptm_4v'
+            out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v'
             os.makedirs(out_dir, exist_ok=True)
             #pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
             #pred_smpl = scale * pred_smpl + trans
 
             ##
-            pred_betas, pred_rotmat, _, _, pred_vert_tetsmpl, pred_cam =evaluater_pretrained.test_gcmr(batch['img'],
+            pred_betas, pred_rotmat,scale,trans, pred_vert_tetsmpl, pred_cam =evaluater_pretrained.test_gcmr(batch['img'],
                                                                                              return_predcam=True)
 
             gt_trans = batch['trans']
@@ -959,7 +1006,6 @@ def validation(pretrained_checkpoint_pamir,
             ##
 
             ##optimization with nerf
-
             smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
                 util.read_smpl_constants('./data')
 
@@ -967,14 +1013,18 @@ def validation(pretrained_checkpoint_pamir,
             obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                  init_smpl_fname)
 
+
+
             #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_pamirwokp(
             #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
 
             #optm_thetas, optm_betas, optm_smpl , nerf_image_before, nerf_image = evaluater.optm_smpl_param(
             #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
-            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_pamir(
-                batch['img'], batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+            #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_pamir(
+            #    batch['img'], batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_kp_mask(
+                batch['img'], batch['mask'],batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
@@ -1093,7 +1143,15 @@ def validation(pretrained_checkpoint_pamir,
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("chamfer mean: %f \n" % np.mean(chamfer_list))
 
-
+    print('psnr mean:', np.mean(psnr_list))
+    print('ssim mean:', np.mean(ssim_list))
+    print('lpips mean:', np.mean(lpips_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("'psnr mean: %f \n" % np.mean(psnr_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("ssim mean: %f \n" %  np.mean(ssim_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("lpips mean: %f \n" % np.mean(lpips_list))
 
 if __name__ == '__main__':
     iternum=50

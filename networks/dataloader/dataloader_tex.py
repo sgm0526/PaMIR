@@ -464,6 +464,196 @@ class TrainingImgDataset(Dataset):
                np.float32(trans_updated), np.float32(scale_updated)
 
 
+class TrainingImgDataset_deephuman(Dataset):
+    def __init__(self, dataset_dir,
+                 img_h, img_w, training, testing_res,
+                 view_num_per_item, point_num, load_pts2smpl_idx_wgt,
+                 smpl_data_folder='./data'):
+        super(TrainingImgDataset_deephuman, self).__init__()
+        self.img_h = img_h
+        self.img_w = img_w
+        self.training = training
+        self.testing_res = testing_res
+        self.dataset_dir = dataset_dir
+        self.view_num_per_item = view_num_per_item
+        self.point_num = point_num
+        self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
+
+        if self.training:
+            self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
+            self.len = len(self.data_list) * self.view_num_per_item
+        else:
+            self.data_list = load_data_list(dataset_dir, 'data_list_test.txt')
+            self.model_2_viewindex = [0]
+            self.len = len(self.data_list)*4 #self.view_num_per_item
+
+
+        # load smpl model data for usage
+        jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
+        self.J_dirs = jmdata['J_dirs']
+        self.J_template = jmdata['J_template']
+
+        # some default parameters for testing
+        self.default_testing_cam_R = constant.cam_R
+        self.default_testing_cam_t = constant.cam_t
+        self.default_testing_cam_f = constant.cam_f
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, item):
+        data_list = self.data_list
+
+
+        if self.training:
+            model_id = item // self.view_num_per_item
+            view_id = item % self.view_num_per_item
+        else:
+            model_id = item// 4
+            view_id = (item%4+1)*90
+
+
+        data_item = data_list[model_id]
+
+        cam_f = self.default_testing_cam_f
+        point_num = self.point_num
+
+        img, mask = self.load_image(data_item, view_id)
+
+
+
+
+        ###
+        target_view_id = np.random.randint(359)
+        if target_view_id>=view_id:
+            target_view_id+=1
+
+        if not self.training:
+            # target_view_id  = self.model_2_targetviewindex[model_id]
+            target_view_id = view_id + 180
+            if target_view_id >=360:
+                target_view_id -= 360
+        #if target_view_id == view_id:
+        #    raise NotImplementedError()
+
+        target_img , target_mask = self.load_image(data_item, target_view_id)
+       ###
+
+        # pts_clr = pts_clr * alpha + beta
+        pose, betas, trans, scale = self.load_smpl_parameters(data_item)
+
+        pose, betas, trans, scale = self.update_smpl_params(pose, betas, trans, scale, view_id)
+
+        return_dict = {
+            'model_id': model_id,
+            'view_id': view_id,
+            'data_item': data_item,
+            'img': torch.from_numpy(img.transpose((2, 0, 1))),
+
+            'betas': torch.from_numpy(betas),
+            'pose': torch.from_numpy(pose),
+            'scale': torch.from_numpy(scale),
+            'trans': torch.from_numpy(trans),
+            'target_view_id': target_view_id,
+            'target_img': torch.from_numpy(target_img .transpose((2, 0, 1))),
+
+            'mask': torch.from_numpy(mask),
+            'target_mask': torch.from_numpy(target_mask),
+
+
+        }
+
+        return return_dict
+
+    def load_image(self, data_item, view_id):
+        img_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color/%04d.jpg' % view_id)
+
+        msk_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'mask/%04d.png' % view_id)
+        try:
+            img = cv.imread(img_fpath).astype(np.uint8)
+            msk = cv.imread(msk_fpath).astype(np.uint8)
+        except:
+            raise RuntimeError('Failed to load iamge: ' + img_fpath)
+
+        #assert img.shape[0] == self.img_h and img.shape[1] == self.img_w ##
+        img = np.float32(cv.cvtColor(img, cv.COLOR_RGB2BGR)) / 255.
+        msk = np.float32(msk) / 255.
+        if len(msk.shape) == 2:
+            msk = np.expand_dims(msk, axis=-1)
+        img = img * msk + (1 - msk)  # white background
+        img_black = img * msk
+        if not (img.shape[0] == self.img_h and img.shape[1] == self.img_w ):
+            img = cv.resize(img, (self.img_w, self.img_h)) ##
+            msk= cv.resize(msk, (self.img_w, self.img_h))  ##
+        return img, msk
+
+
+
+    def load_smpl_parameters(self, data_item):
+        dat_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_mesh_subfolder, data_item, 'smpl_params.txt')
+
+        with open(dat_fpath , 'r') as fp:
+            lines = fp.readlines()
+            lines = [l[:-1] for l in lines]  # remove '\r\n'
+
+            betas_data = filter(lambda s: len(s) != 0, lines[1].split(' '))
+            betas = np.array([float(b) for b in betas_data])
+
+            root_mat_data = lines[3].split(' ') + lines[4].split(' ') + \
+                            lines[5].split(' ') + lines[6].split(' ')
+            root_mat_data = filter(lambda s: len(s) != 0, root_mat_data)
+            root_mat = np.reshape(np.array([float(m) for m in root_mat_data]), (4, 4))
+            root_rot = root_mat[:3, :3]
+            root_trans = root_mat[:3, 3]
+
+            theta_data = lines[8:80]
+            theta = np.array([float(t) for t in theta_data])
+
+        dat_fpath = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, '0.txt')
+        with open(dat_fpath, 'r') as fp:
+            lines = fp.readlines()
+            lines = [l[:-1] for l in lines]  # remove '\r\n'
+            trans = lines[0].split(',')
+            scale = float(lines[1][0])
+            #scale= float(scale[2])
+            trans = np.array([float(trans[0]), float(trans[1]),float(trans[2]) ])
+            root_trans[1] *= -1
+            root_trans[2] *= -1
+            trans = scale * (root_trans + trans)
+
+            scale = np.reshape(scale,(1,-1))
+            trans = np.reshape(trans,(1,-1))
+
+        return theta, betas, trans, scale #  return pose, betas, trans, scale
+
+    def update_smpl_params(self, pose, betas, trans, scale, view_id):
+        # body shape and scale doesn't need to change
+        betas_updated = np.copy(betas)
+        scale_updated = np.copy(scale)
+
+        # update body pose
+        angle = 2 * np.pi * view_id / self.view_num_per_item
+        delta_r = cv.Rodrigues(np.array([0, -angle, 0]))[0]
+        root_rot = cv.Rodrigues(pose[:3])[0]
+        root_rot_updated = np.matmul(delta_r, root_rot)
+        pose_updated = np.copy(pose)
+        pose_updated[:3] = np.squeeze(cv.Rodrigues(root_rot_updated)[0])
+
+        # update body translation
+        J = self.J_dirs.dot(betas) + self.J_template
+        root = J[0]
+        J_orig = np.expand_dims(root, axis=-1)
+        J_new = np.dot(delta_r, np.expand_dims(root, axis=-1))
+        J_orig, J_new = np.reshape(J_orig, (1, -1)), np.reshape(J_new, (1, -1))
+        trans_updated = np.dot(delta_r, np.reshape(trans, (-1, 1)))
+        trans_updated = np.reshape(trans_updated, (1, -1)) + (J_new - J_orig) * scale
+        return np.float32(pose_updated), np.float32(betas_updated), \
+               np.float32(trans_updated), np.float32(scale_updated)
+
 
 class AllImgDataset(Dataset):
     def __init__(self, dataset_dir,
