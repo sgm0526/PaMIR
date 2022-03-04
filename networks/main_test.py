@@ -939,8 +939,8 @@ def validation(pretrained_checkpoint_pamir,
             #optm_thetas, optm_betas, optm_smpl , nerf_image_before, nerf_image = evaluater.optm_smpl_param(
             #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
-            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param(
-                batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_pamir(
+                batch['img'], batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
@@ -956,11 +956,11 @@ def validation(pretrained_checkpoint_pamir,
             betas =optm_betas
             pose = optm_thetas
 
-            # torch.save(betas.cpu(),  os.path.join(out_dir, model_id+'_betas.pth'))
-            # torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
-            # torch.save(scale.cpu(), os.path.join(out_dir, model_id + '_scale.pth'))
-            # torch.save(trans.cpu(), os.path.join(out_dir, model_id + '_trans.pth'))
-            # continue
+            torch.save(betas.cpu(),  os.path.join(out_dir, model_id+'_betas.pth'))
+            torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
+            torch.save(scale.cpu(), os.path.join(out_dir, model_id + '_scale.pth'))
+            torch.save(trans.cpu(), os.path.join(out_dir, model_id + '_trans.pth'))
+            continue
 
         else:
             betas= batch['betas']

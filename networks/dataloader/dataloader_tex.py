@@ -102,6 +102,7 @@ class TrainingImgDataset(Dataset):
         point_num = self.point_num
 
         img, mask = self.load_image(data_item, view_id)
+        keypoints = self.load_keypoints(data_item, view_id)
         cam_R, cam_t = self.load_cams(data_item, view_id)
         pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, view_id, point_num)
 
@@ -188,6 +189,7 @@ class TrainingImgDataset(Dataset):
 
 
         }
+        return_dict.update({'keypoints': torch.from_numpy(keypoints)})
 
         return return_dict
 
@@ -215,6 +217,26 @@ class TrainingImgDataset(Dataset):
             img = cv.resize(img, (self.img_w, self.img_h)) ##
             msk= cv.resize(msk, (self.img_w, self.img_h))  ##
         return img, msk
+
+    def load_keypoints(self, data_item, view_id):
+        data_item = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'keypoints/%04d_keypoints.json' % view_id)
+        with open(data_item) as fp:
+            data = json.load(fp)
+        keypoints = []
+        if 'people' in data:
+            for idx, person_data in enumerate(data['people']):
+                kp_data = np.array(person_data['pose_keypoints_2d'], dtype=np.float32)
+                kp_data = kp_data.reshape([-1, 3])
+                kp_data = kp_data[constant.body25_to_joint]  # rearrange keypoints
+                kp_data[constant.body25_to_joint < 0] *= 0.0  # remove undefined keypoints
+                kp_data[:, 0] = kp_data[:, 0] * 2 / self.img_w - 1.0
+                kp_data[:, 1] = kp_data[:, 1] * 2 / self.img_h - 1.0
+                keypoints.append(kp_data)
+        if len(keypoints) == 0:
+            keypoints.append(np.zeros([24, 3]))
+
+        return np.array(keypoints[0], dtype=np.float32)
 
     def load_cams(self, data_item, view_id):
         dat_fpath = os.path.join(

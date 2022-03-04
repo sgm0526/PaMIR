@@ -754,6 +754,8 @@ class EvaluatorTex(object):
         cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
         cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
+        kp_conf = keypoint[:, :, -1:].clone()
+        kp_detection = keypoint[:, :, :-1].clone()
 
         # convert rotmat to theta
 
@@ -775,11 +777,9 @@ class EvaluatorTex(object):
         betas_orig = betas_new.clone().detach()
         optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
 
-        vert_cam = scale * self.tet_smpl(theta, betas) + trans
-        vol = self.voxelization(vert_cam)
-        vert_cam = vert_cam[:, :6890]
-        vert_cam_proj = self.project_points2(vert_cam, cam_f, cam_c, cam_tz)
-        _, _, att_orig, _, smpl_sdf = self.pamir_tex_net(img, vol, vert_cam ,  vert_cam_proj)
+        vert_tetsmpl = self.tet_smpl(theta_orig, betas_orig)
+        vert_tetsmpl_cam = scale * vert_tetsmpl + trans
+        keypoint = self.smpl.get_joints(vert_tetsmpl_cam[:, :6890])
 
 
         nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
@@ -790,15 +790,16 @@ class EvaluatorTex(object):
             theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
             vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
             vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
+            keypoint_new = self.smpl.get_joints(vert_tetsmpl_new_cam[:, :6890])
+            keypoint_new_proj =self.project_points2(
+                keypoint_new, cam_f, cam_c, cam_tz)
+
+            if i % 20 == 0:
+                vol = self.voxelization(vert_tetsmpl_new_cam.detach())
 
             vol = self.voxelization(vert_tetsmpl_new_cam.detach())
             pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
-            #pred_vert_new_cam = vert_tetsmpl_new_cam[:, :6890]
-            #pred_vert_new_cam = pred_vert_new_cam+torch.normal(0, 0.1, size=pred_vert_new_cam.shape).cuda()
-
-            #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
             pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
-
 
 
             _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
@@ -807,8 +808,10 @@ class EvaluatorTex(object):
 
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
+            loss_kp = torch.mean((kp_conf * keypoint_new_proj - kp_conf * kp_detection) ** 2)
+            loss_bias2 = torch.mean((keypoint[:, :, 2] - keypoint_new[:, :, 2]) ** 2)
 
-            loss =  loss_fitting * 1.0 + loss_bias * 1.0
+            loss = loss_fitting * 1.0 + loss_bias * 1.0 + loss_kp * 500.0 + loss_bias2 * 5
 
             optm.zero_grad()
             loss.backward()
