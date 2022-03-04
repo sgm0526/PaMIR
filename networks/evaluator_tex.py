@@ -811,7 +811,7 @@ class EvaluatorTex(object):
             loss_kp = torch.mean((kp_conf * keypoint_new_proj - kp_conf * kp_detection) ** 2)
             loss_bias2 = torch.mean((keypoint[:, :, 2] - keypoint_new[:, :, 2]) ** 2)
 
-            loss = loss_fitting * 1.0 + loss_bias * 1.0 + loss_kp * 500.0 + loss_bias2 * 5
+            loss =loss_fitting * 1.0 + loss_bias * 1.0 + loss_kp * 500.0 + loss_bias2 * 5
 
             optm.zero_grad()
             loss.backward()
