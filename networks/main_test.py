@@ -445,20 +445,20 @@ def validation(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v/'
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_v2_ours_256gcmroptmask_gttrans__pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask_gttrans_amir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat_2022_03_02_06_24_00/'
         os.makedirs(out_dir, exist_ok=True)
-        #model_id = str(501 + batch['model_id'].item()).zfill(4)
+        model_num = str(501 + batch['model_id'].item()).zfill(4)
         model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'][:,0].item())).zfill(4)
         print(model_id)
 
         view_id1 = str(batch['view_id'][:, 0].item()).zfill(4)
         view_id2 = str(batch['view_id'][:, 1].item()).zfill(4)
 
-        img_fpath1 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_133/{model_id}/{view_id1}.png'
+        img_fpath1 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}.png'
         img1 = cv.imread(img_fpath1).astype(np.uint8)
         img1 = np.float32(cv.cvtColor(img1, cv.COLOR_RGB2BGR)) / 255.
         img1 = torch.from_numpy(img1.transpose((2, 0, 1))).unsqueeze(0).cuda()
-        img_fpath2 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0225_onlyback_new_b1_predcat_gpu4/epoch_133/{model_id}/{view_id1}_{view_id2}.png'
+        img_fpath2 = f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
         img2 = cv.imread(img_fpath2).astype(np.uint8)
         img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
         img2 = torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
@@ -592,7 +592,7 @@ def validation(pretrained_checkpoint_pamir,
         #measure dist
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
 
-        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_id}/{model_id}.obj'
+        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_num}/{model_num}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
         tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
@@ -635,7 +635,7 @@ if __name__ == '__main__':
     geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry_gtsmpl_epoch30/checkpoints/latest.pt'
 
 
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/checkpoints/2022_03_02_06_24_00.pt'
 
     validation(geometry_model_dir , texture_model_dir)
     #inference('/home/nas1_temp/dataset/deepfashion/our_test',geometry_model_dir, texture_model_dir)
