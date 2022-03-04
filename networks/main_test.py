@@ -9,6 +9,8 @@ from util import util
 from util import obj_io
 from torch.nn import functional as F
 
+from Pytorch_metrics import metrics
+
 def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint):
     from evaluator import Evaluator
     from dataloader.dataloader_testing import TestingImgLoader
@@ -441,11 +443,14 @@ def validation(pretrained_checkpoint_pamir,
 
     p2s_list=[]
     chamfer_list=[]
+    psnr_list = []
+    ssim_list = []
+    lpips_list = []
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v/'
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationv2_256gcmroptmask_gttrans_pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat_2022_03_02_06_24_00/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask_gttrans_pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat_2022_03_02_06_24_00/'
         os.makedirs(out_dir, exist_ok=True)
         model_num = str(501 + batch['model_id'].item()).zfill(4)
         model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'][:,0].item())).zfill(4)
@@ -466,7 +471,41 @@ def validation(pretrained_checkpoint_pamir,
 
 
         vol_res = 256
+        if True:
 
+            targetview=180
+            out_dir = f'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_render{targetview}__pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat_2022_03_02_06_24_00/'
+            os.makedirs(out_dir, exist_ok=True)
+            surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(img_pair, batch['betas'], batch['pose'], batch['scale'], batch['trans'],
+                                                              batch['view_id'], batch['target_view_id'] )
+
+            volume_render_pred, volume_render_alpha = evaluater.test_nerf_target(img_pair, batch['betas'],
+                                                                                         batch['pose'], batch['scale'],
+                                                                                         batch['trans'],
+                                                                                         batch['view_id'], batch['target_view_id'])
+
+            psnr=  metrics.PSNR()(surface_render_alpha.cuda(), batch['target_img'])
+            ssim = metrics.SSIM()(surface_render_alpha.cuda(), batch['target_img'])
+            lpips = metrics.LPIPS(True)(surface_render_alpha.cuda(), batch['target_img'])
+            psnr_list.append(psnr.item())
+            ssim_list.append(ssim.item())
+            lpips_list.append(lpips.item())
+
+
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("model id: %s \n" % model_id)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("psnr: %f \n" % psnr)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("ssim : %f \n" % ssim )
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("lpips : %f \n" % lpips )
+
+            image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
+            save_image(surface_render_alpha, image_fname)
+            image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
+            save_image(volume_render_alpha, image_fname)
+            continue
 
 
 
@@ -625,6 +664,15 @@ def validation(pretrained_checkpoint_pamir,
         f.write("p2s mean: %f \n" % np.mean(p2s_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("chamfer mean: %f \n" % np.mean(chamfer_list))
+    print('psnr mean:', np.mean(psnr_list))
+    print('ssim mean:', np.mean(ssim_list))
+    print('lpips mean:', np.mean(lpips_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("'psnr mean: %f \n" % np.mean(psnr_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("ssim mean: %f \n" % np.mean(ssim_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("lpips mean: %f \n" % np.mean(lpips_list))
 
 
 if __name__ == '__main__':

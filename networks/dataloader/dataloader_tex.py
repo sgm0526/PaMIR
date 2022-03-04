@@ -193,7 +193,8 @@ class TrainingImgDataset(Dataset):
             target_view_id = random.choice(target_view_list)
 
         else:
-            target_view_id  = self.model_2_targetviewindex[model_id]
+            target_view_id = source_view_list[1]
+            #target_view_id  = self.model_2_targetviewindex[model_id]
 
         if target_view_id == view_id:
             raise NotImplementedError()

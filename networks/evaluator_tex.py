@@ -259,6 +259,205 @@ class EvaluatorTex(object):
 
         return pts_clr_pred, pts_clr_warped
 
+    def run_Secant_method(self, img, vol, f_low, f_high, z_low, z_high, n_secant_steps, sampled_rays_d_world, view_id, target_view_id,
+                          threshold):
+
+        batch_size = img.size(0)
+        num_rays = z_low.size(1)
+
+        z_pred = - f_low * (z_high - z_low) / (f_high - f_low) + z_low
+        for i in range(n_secant_steps):
+            p_mid = sampled_rays_d_world.unsqueeze(-2) * z_pred
+            p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
+
+            z_point_list = []
+            z_point_proj_list = []
+            for i in range(img.size(1)):
+                view_diff = view_id[:, i] - target_view_id
+                z_point = self.rotate_points(p_mid, view_diff)
+                z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz)
+                z_point = z_point.reshape(batch_size, -1, 3)
+                z_point_proj = z_point_proj.reshape(batch_size, -1, 2)
+
+                z_point_list.append(z_point.unsqueeze(1))
+                z_point_proj_list.append(z_point_proj.unsqueeze(1))
+            z_point = torch.cat(z_point_list, 1)
+            z_point_proj = torch.cat(z_point_proj_list, 1)
+            nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+                img, vol, z_point, z_point_proj)
+            alphas = nerf_output_sigma.reshape(batch_size, num_rays, 1, 1)
+
+            f_mid = alphas.squeeze(1) - threshold
+            inz_low = f_mid < 0
+            if inz_low.sum() > 0:
+                z_low[inz_low] = z_pred[inz_low]
+                f_low[inz_low] = f_mid[inz_low]
+            if (inz_low == 0).sum() > 0:
+                z_high[inz_low == 0] = z_pred[inz_low == 0]
+                f_high[inz_low == 0] = f_mid[inz_low == 0]
+
+            z_pred = - f_low * (z_high - z_low) / (f_high - f_low) + z_low
+
+        return z_pred.data
+
+    def run_Bisection_method(self, img, vol, z_low, z_high, n_secant_steps, sampled_rays_d_world, view_id, target_view_id, threshold):
+
+        batch_size = img.size(0)
+        num_rays = z_low.size(1)
+
+        z_pred = (z_low + z_high) / 2.
+        for i in range(n_secant_steps):
+            p_mid = sampled_rays_d_world.unsqueeze(-2) * z_pred
+            p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
+
+            z_point_list = []
+            z_point_proj_list = []
+            for i in range(img.size(1)):
+                view_diff = view_id[:, i] - target_view_id
+                z_point = self.rotate_points(p_mid, view_diff)
+                z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz)
+                z_point = z_point.reshape(batch_size, -1, 3)
+                z_point_proj = z_point_proj.reshape(batch_size, -1, 2)
+
+                z_point_list.append(z_point.unsqueeze(1))
+                z_point_proj_list.append(z_point_proj.unsqueeze(1))
+            z_point = torch.cat(z_point_list, 1)
+            z_point_proj = torch.cat(z_point_proj_list, 1)
+            nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+                img, vol, z_point, z_point_proj)
+            alphas = nerf_output_sigma.reshape(batch_size, num_rays, 1, 1)
+
+            f_mid = alphas.squeeze(1) - threshold
+            inz_low = f_mid < 0
+            z_low[inz_low] = z_pred[inz_low]
+            z_high[inz_low == 0] = z_pred[inz_low == 0]
+            z_pred = 0.5 * (z_low + z_high)
+
+        return z_pred.data
+    def test_surface_rendering(self, img, betas, pose, scale, trans, view_id, target_view_id, return_cam_loc=False,
+                               return_flow_feature=False):
+        # self.pamir_net.eval()
+        self.pamir_tex_net.eval()
+
+        gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
+        vol = self.voxelization(gt_vert_cam)
+
+        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
+        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
+        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
+
+        batch_size = img.size(0)
+        img_size = const.img_res
+        fov = 2 * torch.atan(torch.Tensor([cam_c / cam_f])).item()
+        fov_degree = fov * 180 / math.pi
+        ray_start = const.ray_start  # cam_tz - 0.87  # (
+        ray_end = const.ray_end  # cam_tz + 0.87
+        num_steps = const.num_steps
+
+        ## todo hierarchical sampling
+
+        points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
+                                                               resolution=(int(const.img_res / const.down_scale),
+                                                                           int(const.img_res / const.down_scale)),
+                                                               device=self.device, fov=fov_degree, ray_start=ray_start,
+                                                               ray_end=ray_end)  # batch_size, pixels, num_steps, 1
+
+        # 1, img_size*img_size, num_steps, 3
+        points_cam[:, :, :, 2] += cam_tz
+
+        points_cam_source_list = []
+        points_cam_source_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - target_view_id
+            points_cam_source = self.rotate_points(points_cam, view_diff)
+            points_cam_source_proj = self.project_points(points_cam_source, cam_f, cam_c, cam_tz)
+            points_cam_source_list.append(points_cam_source.unsqueeze(1))
+            points_cam_source_proj_list.append(points_cam_source_proj.unsqueeze(1))
+
+        points_cam_source = torch.cat(points_cam_source_list, 1)
+        points_cam_source_proj = torch.cat(points_cam_source_proj_list, 1)
+
+        num_ray = 5000
+        img_size = int(img_size / const.down_scale)
+        pts_group_num = (img_size * img_size + num_ray - 1) // num_ray
+        pts_clr_pred = []
+        pts_clr_warped = []
+        for gi in tqdm(range(pts_group_num), desc='Texture query'):
+            # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
+            sampled_points = points_cam_source[:, :, (gi * num_ray):((gi + 1) * num_ray), :,
+                             :]  # 1, group_size, num_step, 3
+            sampled_points_proj = points_cam_source_proj[:, :, (gi * num_ray):((gi + 1) * num_ray), :, :]
+            sampled_z_vals = z_vals[:, (gi * num_ray):((gi + 1) * num_ray), :, :]
+            sampled_rays_d_target = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
+
+            num_ray_part = sampled_points.size(2)
+            # num_ray -> num_ray_part
+
+            with torch.no_grad():
+                sampled_points = sampled_points.reshape(batch_size, -1, num_ray_part * num_steps,
+                                                        3)  # 1 group_size*num_step, 3
+                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, num_ray_part * num_steps, 2)
+
+                nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+                    img, vol, sampled_points, sampled_points_proj, return_flow_feature)
+                alphas = nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, -1)
+                threshold = const.threshold
+                sign = (alphas > threshold).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
+                    batch_size, num_ray_part, 1).to(self.device)
+                max_index = sign.unsqueeze(-1).argmax(dim=2)
+                ray_mask = max_index != 0
+                max_index[max_index == 0] += 1
+                start_index = max_index - 1
+                start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                end_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+
+                start_alphas_vals = torch.gather(alphas, 2, start_index.unsqueeze(-1))
+                end_alphas_vals = torch.gather(alphas, 2, max_index.unsqueeze(-1))
+
+                # z_pred = start_z_vals
+                z_pred = self.run_Bisection_method(img, vol, start_z_vals, end_z_vals,
+                                                   3, sampled_rays_d_target, view_id, target_view_id, threshold)
+                # z_pred = self.run_Secant_method(img, vol, start_alphas_vals, end_alphas_vals, start_z_vals, end_z_vals,
+                #                                3, sampled_rays_d_world, view_diff)
+
+                p_mid = sampled_rays_d_target.unsqueeze(-2) * z_pred
+                p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
+                z_point_list = []
+                z_point_proj_list = []
+                for i in range(img.size(1)):
+                    view_diff = view_id[:, i] - target_view_id
+                    z_point = self.rotate_points(p_mid, view_diff)
+                    z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz)
+                    z_point  = z_point .reshape(batch_size, -1, 3)
+                    z_point_proj = z_point_proj.reshape(batch_size, -1, 2)
+
+                    z_point_list.append(z_point .unsqueeze(1))
+                    z_point_proj_list.append(z_point_proj.unsqueeze(1))
+                z_point  = torch.cat(z_point_list, 1)
+                z_point_proj = torch.cat(z_point_proj_list, 1)
+
+
+                pixels_pred, feature_pred, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
+                    img, vol, z_point, z_point_proj)
+
+                pixels_pred[~ray_mask[..., 0]] = 1
+                feature_pred[~ray_mask[..., 0]] = 1
+
+
+            pts_clr_pred.append(pixels_pred.detach().cpu())
+            pts_clr_warped.append(feature_pred.detach().cpu())
+            # pts_clr_pred.append(pixels_pred)
+            # pts_clr_warped.append(pixels_warped)
+        ##
+        pts_clr_pred = torch.cat(pts_clr_pred, dim=1)
+        pts_clr_pred = pts_clr_pred.permute(0, 2, 1).reshape(batch_size, pts_clr_pred.size(2), img_size, img_size)
+        pts_clr_warped = torch.cat(pts_clr_warped, dim=1)
+        pts_clr_warped = pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
+        # pts_clr = pts_clr.permute(2,0,1
+        if return_cam_loc:
+            return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
+
+        return pts_clr_pred, pts_clr_warped
 
     def test_nerf_target_sigma(self, img, view_id, betas, pose, scale, trans, vol_res):
         #self.pamir_net.eval()
