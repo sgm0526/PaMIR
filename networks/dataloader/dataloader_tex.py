@@ -68,7 +68,7 @@ class TrainingImgDataset(Dataset):
             self.data_list = load_data_list(dataset_dir, 'data_list_test.txt')
             self.model_2_viewindex = [138,155,195,73,303,225,240,333,136,197,222,272,291,298,147,38,194,275,348,40,1,13,325,273,186]
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
-            self.len = len(self.data_list) #* self.view_num_per_item
+            self.len = len(self.data_list) * 4#self.view_num_per_item
 
         if False:
             self.model_2_viewindex = [180] * 25
@@ -94,8 +94,8 @@ class TrainingImgDataset(Dataset):
             model_id = item // self.view_num_per_item
             view_id = item % self.view_num_per_item
         else:
-            model_id = item
-            view_id = self.model_2_viewindex[model_id]
+            model_id = item// 4
+            view_id = (item%4)*90
 
 
         data_item = data_list[model_id]

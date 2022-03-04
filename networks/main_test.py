@@ -444,10 +444,11 @@ def validation(pretrained_checkpoint_pamir,
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization/'
+        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_maskoptimization_4v/'
         out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_0301_v2_ours_256gcmroptmask_gttrans__pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/'
         os.makedirs(out_dir, exist_ok=True)
-        model_id = str(501 + batch['model_id'].item()).zfill(4)
+        #model_id = str(501 + batch['model_id'].item()).zfill(4)
+        model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'][:,0].item())).zfill(4)
         print(model_id)
 
         view_id1 = str(batch['view_id'][:, 0].item()).zfill(4)
@@ -532,10 +533,11 @@ def validation(pretrained_checkpoint_pamir,
             scale = batch['scale']
             trans = batch['trans']
 
-        #torch.save(betas.cpu(),  os.path.join(out_dir, model_id+'_betas.pth'))
-        #torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
-        #torch.save(scale.cpu(), os.path.join(out_dir, model_id + '_scale.pth'))
-        #torch.save(trans.cpu(), os.path.join(out_dir, model_id + '_trans.pth'))
+        # torch.save(betas.cpu(),  os.path.join(out_dir, model_id+'_betas.pth'))
+        # torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
+        # torch.save(scale.cpu(), os.path.join(out_dir, model_id + '_scale.pth'))
+        # torch.save(trans.cpu(), os.path.join(out_dir, model_id + '_trans.pth'))
+        # continue
 
         if True:
             mesh = evaluater.test_pifu(img_pair, batch['view_id'], vol_res, betas, pose, scale, trans)
@@ -635,8 +637,8 @@ if __name__ == '__main__':
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha_concat/checkpoints/latest.pt'
 
-    #validation(geometry_model_dir , texture_model_dir)
-    inference('/home/nas1_temp/dataset/deepfashion/our_test',geometry_model_dir, texture_model_dir)
+    validation(geometry_model_dir , texture_model_dir)
+    #inference('/home/nas1_temp/dataset/deepfashion/our_test',geometry_model_dir, texture_model_dir)
 
 
     # #! NOTE: We recommend using this when accurate SMPL estimation is available (e.g., through external optimization / annotation)
