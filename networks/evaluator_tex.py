@@ -44,6 +44,7 @@ class EvaluatorTex(object):
         self.smpl = SMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl').to(self.device)
         self.tet_smpl = TetraSMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',
                                   './data/tetra_smpl.npz').to(self.device)
+
         smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
             util.read_smpl_constants('./data')
         self.smpl_faces = smpl_faces
