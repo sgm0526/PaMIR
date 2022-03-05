@@ -933,8 +933,8 @@ def validation(pretrained_checkpoint_pamir,
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephumanv4_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
-        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephumanv3_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephumanv4_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
 
         os.makedirs(out_dir, exist_ok=True)
@@ -986,7 +986,7 @@ def validation(pretrained_checkpoint_pamir,
             continue
 
 
-        use_gcmr=True
+        use_gcmr=False
         if use_gcmr :
             #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v'
             #os.makedirs(out_dir, exist_ok=True)
@@ -994,8 +994,12 @@ def validation(pretrained_checkpoint_pamir,
             #pred_smpl = scale * pred_smpl + trans
 
             ##
-            pred_betas, pred_rotmat,scale,trans, pred_vert_tetsmpl, pred_cam =evaluater_pretrained.test_gcmr(batch['img'],
+            pred_betas, pred_rotmat,scale1,trans1, pred_vert_tetsmpl, pred_cam =evaluater_pretrained.test_gcmr(batch['img'],
                                                                                              return_predcam=True)
+            vert = torch.matmul(pred_vert_tetsmpl[:, :6890], batch['rot'].permute(0, 2, 1))
+            vert[:, :, 1] *= -1
+            vert[:, :, 2] *= -1
+            pred_smpl1 = scale1 * vert  + trans1
 
 
             gt_trans = batch['trans']
@@ -1019,18 +1023,36 @@ def validation(pretrained_checkpoint_pamir,
                 scale_ = torch.cat([scale, -scale, -scale], dim=-1).detach().view((-1, 1, 3))
                 trans_ = torch.cat([trans_x, trans_y, trans_z], dim=-1).detach().view((-1, 1, 3))
 
-            scale = scale_
-            trans = trans_
-            pred_smpl = scale * pred_vert_tetsmpl[:, :6890] + trans
+            scale2 = scale_
+            trans2 = trans_
+            pred_smpl2 = scale2*vert+ trans2
             ##
 
             ##optimization with nerf
             smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
                 util.read_smpl_constants('./data')
 
-            init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl.obj')
-            obj_io.save_obj_data({'v': pred_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+
+
+            vert = torch.matmul(evaluater.tet_smpl( batch['pose'], batch['betas']), batch['rot'].permute(0, 2, 1))
+            vert[:, :, 1] *= -1
+            vert[:, :, 2] *= -1
+            gt_smpl =  batch['scale']* vert + batch['trans']
+
+
+            init_smpl_fname = os.path.join(out_dir, model_id+ '_init_smpl1.obj')
+            obj_io.save_obj_data({'v': pred_smpl1.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
                                  init_smpl_fname)
+
+            init_smpl_fname = os.path.join(out_dir, model_id + '_init_smpl2.obj')
+            obj_io.save_obj_data({'v': pred_smpl2.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                 init_smpl_fname)
+
+            init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl.obj')
+            obj_io.save_obj_data({'v': gt_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                 init_smpl_fname)
+
+            import pdb; pdb.set_trace()
 
 
 
@@ -1079,6 +1101,7 @@ def validation(pretrained_checkpoint_pamir,
             vert = torch.matmul(evaluater.tet_smpl(pose, betas), batch['rot'].permute(0, 2, 1))
             vert[:, :, 1] *= -1
             vert[:, :, 2] *= -1
+            #import pdb; pdb.set_trace()
             vert = scale *  vert  + trans
 
 
