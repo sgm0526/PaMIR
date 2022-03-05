@@ -1066,7 +1066,6 @@ def validation(pretrained_checkpoint_pamir,
             vert = scale * vert + trans
 
         else:
-
             betas= batch['betas']
             pose = batch['pose']
             scale = batch['scale']
@@ -1088,9 +1087,6 @@ def validation(pretrained_checkpoint_pamir,
             vert = scale * evaluater.tet_smpl(pose, betas)+ trans
             init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl2.obj')
             obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces}, init_smpl_fname)
-
-
-            vert = scale *  vert  + trans
 
 
             import pdb; pdb.set_trace()
