@@ -896,13 +896,26 @@ def validation(pretrained_checkpoint_pamir,
     from evaluator import Evaluator
     evaluater_pretrained = Evaluator(device, pretrained_checkpoint_pamir, './results/gcmr_pretrained/gcmr_2020_12_10-21_03_12.pt')
 
-    val_ds = TrainingImgDataset(
-        '/home/nas1_temp/dataset/Thuman', img_h=const.img_res, img_w=const.img_res,
-        training=False, testing_res=256,
-        view_num_per_item=360,
-        point_num=5000,
-        load_pts2smpl_idx_wgt=True,
-        smpl_data_folder='./data')
+    measure_deephuman=True
+
+    if measure_deephuman:
+        val_ds = TrainingImgDataset_deephuman(
+            '/home/nas1_temp/dataset/Deephuman', img_h=const.img_res, img_w=const.img_res,
+            training=False, testing_res=256,
+            view_num_per_item=360,
+            point_num=5000,
+            load_pts2smpl_idx_wgt=True,
+            smpl_data_folder='./data')
+    else:
+        val_ds = TrainingImgDataset(
+            '/home/nas1_temp/dataset/Thuman', img_h=const.img_res, img_w=const.img_res,
+            training=False, testing_res=256,
+            view_num_per_item=360,
+            point_num=5000,
+            load_pts2smpl_idx_wgt=True,
+            smpl_data_folder='./data')
+
+
 
     val_data_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8,
                                  worker_init_fn=None, drop_last=False)
@@ -920,12 +933,17 @@ def validation(pretrained_checkpoint_pamir,
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptonlykp_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_256gtsmplv2__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
 
         os.makedirs(out_dir, exist_ok=True)
         # model_id = str(501 + batch['model_id'].item()).zfill(4)
-        model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'].item())).zfill(4)
+        if measure_deephuman:
+            model_id = (str(batch['model_id'].item()) + '_' + str(batch['view_id'].item())).zfill(4)
+        else:
+            model_id = (str(501 + batch['model_id'].item()) + '_' + str(batch['view_id'].item())).zfill(4)
+
         print(model_id)
 
         vol_res = 256
@@ -968,16 +986,17 @@ def validation(pretrained_checkpoint_pamir,
             continue
 
 
-        use_gcmr= True
+        use_gcmr=False
         if use_gcmr :
-            out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v'
-            os.makedirs(out_dir, exist_ok=True)
+            #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v'
+            #os.makedirs(out_dir, exist_ok=True)
             #pred_betas, pred_rotmat, scale, trans, pred_smpl = evaluator_pretrained.test_gcmr(batch['img'])
             #pred_smpl = scale * pred_smpl + trans
 
             ##
             pred_betas, pred_rotmat,scale,trans, pred_vert_tetsmpl, pred_cam =evaluater_pretrained.test_gcmr(batch['img'],
                                                                                              return_predcam=True)
+
 
             gt_trans = batch['trans']
             cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
@@ -1018,13 +1037,13 @@ def validation(pretrained_checkpoint_pamir,
             #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_pamirwokp(
             #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)
 
-            #optm_thetas, optm_betas, optm_smpl , nerf_image_before, nerf_image = evaluater.optm_smpl_param(
-            #    batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+            optm_thetas, optm_betas, optm_smpl , nerf_image_before, nerf_image = evaluater.optm_smpl_param(
+                batch['img'], batch['mask'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
             #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_pamir(
             #    batch['img'], batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
-            optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_kp_mask(
-                batch['img'], batch['mask'],batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
+            #optm_thetas, optm_betas, optm_smpl, nerf_image_before, nerf_image = evaluater.optm_smpl_param_kp_mask(
+            #    batch['img'], batch['mask'],batch['keypoints'], pred_betas, pred_rotmat, scale, trans, iter_num=iternum)  ##not yet
 
             optm_smpl_fname = os.path.join(out_dir, model_id+'_optm_smpl.obj')
             obj_io.save_obj_data({'v': optm_smpl.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
@@ -1044,25 +1063,25 @@ def validation(pretrained_checkpoint_pamir,
             torch.save(pose.cpu(), os.path.join(out_dir, model_id + '_pose.pth'))
             torch.save(scale.cpu(), os.path.join(out_dir, model_id + '_scale.pth'))
             torch.save(trans.cpu(), os.path.join(out_dir, model_id + '_trans.pth'))
-            continue
+            #continue
 
         else:
             betas= batch['betas']
             pose = batch['pose']
             scale = batch['scale']
             trans = batch['trans']
-            betas = torch.load(os.path.join(
-                '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpoptm_4v',
-                f'{model_id}_betas.pth')).cuda()
-            pose = torch.load(os.path.join(
-                '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpoptm_4v',
-                f'{model_id}_pose.pth')).cuda()
-            scale = torch.load(os.path.join(
-                '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpoptm_4v',
-                f'{model_id}_scale.pth')).cuda()
-            trans = torch.load(os.path.join(
-                '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpoptm_4v',
-                f'{model_id}_trans.pth')).cuda()
+            # betas = torch.load(os.path.join(
+            #     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v',
+            #     f'{model_id}_betas.pth')).cuda()
+            # pose = torch.load(os.path.join(
+            #     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v',
+            #     f'{model_id}_pose.pth')).cuda()
+            # scale = torch.load(os.path.join(
+            #     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v',
+            #     f'{model_id}_scale.pth')).cuda()
+            # trans = torch.load(os.path.join(
+            #     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v',
+            #     f'{model_id}_trans.pth')).cuda()
 
         if True:
             mesh = evaluater.test_pifu(batch['img'], vol_res, betas, pose, scale, trans)
@@ -1113,8 +1132,13 @@ def validation(pretrained_checkpoint_pamir,
 
         #measure dist
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
-        model_number = str(501 + batch['model_id'].item()).zfill(4)
-        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_number}/{model_number}.obj'
+
+        if measure_deephuman:
+            model_number = str( batch['model_id'].item()).zfill(4)
+            tgt_meshname =f'/home/nas1_temp/dataset/Deephuman/image_data/{model_number}/mesh_after.obj'
+        else:
+            model_number = str(501 + batch['model_id'].item()).zfill(4)
+            tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_number}/{model_number}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
         tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)

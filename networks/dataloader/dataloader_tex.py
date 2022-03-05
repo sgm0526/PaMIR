@@ -475,7 +475,7 @@ class TrainingImgDataset_deephuman(Dataset):
         self.training = training
         self.testing_res = testing_res
         self.dataset_dir = dataset_dir
-        self.view_num_per_item = view_num_per_item
+        self.view_num_per_item = 1 #view_num_per_item
         self.point_num = point_num
         self.load_pts2smpl_idx_wgt = load_pts2smpl_idx_wgt
 
@@ -485,7 +485,7 @@ class TrainingImgDataset_deephuman(Dataset):
         else:
             self.data_list = load_data_list(dataset_dir, 'data_list_test.txt')
             self.model_2_viewindex = [0]
-            self.len = len(self.data_list)*4 #self.view_num_per_item
+            self.len = len(self.data_list)*self.view_num_per_item
 
 
         # load smpl model data for usage
@@ -509,8 +509,8 @@ class TrainingImgDataset_deephuman(Dataset):
             model_id = item // self.view_num_per_item
             view_id = item % self.view_num_per_item
         else:
-            model_id = item// 4
-            view_id = (item%4+1)*90
+            model_id = item// self.view_num_per_item
+            view_id = (item%self.view_num_per_item )*90
 
 
         data_item = data_list[model_id]
@@ -542,7 +542,7 @@ class TrainingImgDataset_deephuman(Dataset):
         # pts_clr = pts_clr * alpha + beta
         pose, betas, trans, scale = self.load_smpl_parameters(data_item)
 
-        pose, betas, trans, scale = self.update_smpl_params(pose, betas, trans, scale, view_id)
+        #pose, betas, trans, scale = self.update_smpl_params(pose, betas, trans, scale, view_id)
 
         return_dict = {
             'model_id': model_id,
@@ -628,7 +628,7 @@ class TrainingImgDataset_deephuman(Dataset):
             scale = np.reshape(scale,(1,-1))
             trans = np.reshape(trans,(1,-1))
 
-        return theta, betas, trans, scale #  return pose, betas, trans, scale
+        return np.float32(theta), np.float32(betas), np.float32(trans), np.float32(scale) #  return pose, betas, trans, scale
 
     def update_smpl_params(self, pose, betas, trans, scale, view_id):
         # body shape and scale doesn't need to change
