@@ -933,8 +933,8 @@ def validation(pretrained_checkpoint_pamir,
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephumanv2_debug_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
-        #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_256gtsmplv2__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephumanv5_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        # out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_debug__256gtsmplv2__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
 
         os.makedirs(out_dir, exist_ok=True)
@@ -986,7 +986,7 @@ def validation(pretrained_checkpoint_pamir,
             continue
 
 
-        use_gcmr=False
+        use_gcmr=True
         if use_gcmr :
             #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/smpl_kpmaskoptm_4v'
             #os.makedirs(out_dir, exist_ok=True)
@@ -1085,8 +1085,8 @@ def validation(pretrained_checkpoint_pamir,
             #vert =  torch.matmul(vert, batch['rot'].permute(0, 2, 1))
             #vert[:, :, 1] *= -1
             #vert[:, :, 2] *= -1
-            obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces}, init_smpl_fname)
-            import pdb; pdb.set_trace()
+            #obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces}, init_smpl_fname)
+            #import pdb; pdb.set_trace()
 
 
             #import pdb; pdb.set_trace()
@@ -1144,9 +1144,12 @@ def validation(pretrained_checkpoint_pamir,
         vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'])
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
         if measure_deephuman:
+            vertices1=(vertices1-trans)/scale
             vertices2 = torch.matmul(vertices1, batch['rot'].permute(0, 2, 1))
             vertices2[:, :, 1] *= -1
             vertices2[:, :, 2] *= -1
+            vertices2 = scale*vertices2+trans
+
             obj_io.save_obj_data({'v': vertices2[0].squeeze().detach().cpu().numpy(), 'f': mesh['f']}, mesh_fname)
         else:
             obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
