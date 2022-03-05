@@ -1077,7 +1077,7 @@ def validation(pretrained_checkpoint_pamir,
             vert = torch.matmul(evaluater.tet_smpl(pose, betas), batch['rot'].permute(0, 2, 1))
             vert[:, :, 1] *= -1
             vert[:, :, 2] *= -1
-<<<<<<< HEAD
+
             # import pdb; pdb.set_trace()
             vert = scale * vert + trans
             init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl.obj')
@@ -1089,9 +1089,9 @@ def validation(pretrained_checkpoint_pamir,
             init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl2.obj')
             obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces}, init_smpl_fname)
 
-=======
+
             vert = scale *  vert  + trans
->>>>>>> parent of 1d4e794 (update)
+
 
             import pdb; pdb.set_trace()
             import cv2 as cv
