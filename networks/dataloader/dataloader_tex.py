@@ -540,7 +540,7 @@ class TrainingImgDataset_deephuman(Dataset):
        ###
 
         # pts_clr = pts_clr * alpha + beta
-        pose, betas, trans, scale = self.load_smpl_parameters(data_item)
+        pose, betas, trans, scale, rot = self.load_smpl_parameters(data_item)
 
         #pose, betas, trans, scale = self.update_smpl_params(pose, betas, trans, scale, view_id)
 
@@ -554,6 +554,7 @@ class TrainingImgDataset_deephuman(Dataset):
             'pose': torch.from_numpy(pose),
             'scale': torch.from_numpy(scale),
             'trans': torch.from_numpy(trans),
+            'rot': torch.from_numpy(rot),
             'target_view_id': target_view_id,
             'target_img': torch.from_numpy(target_img .transpose((2, 0, 1))),
 
@@ -618,17 +619,14 @@ class TrainingImgDataset_deephuman(Dataset):
             lines = fp.readlines()
             lines = [l[:-1] for l in lines]  # remove '\r\n'
             trans = lines[0].split(',')
-            scale = float(lines[1][0])
-            #scale= float(scale[2])
+            scale = float(lines[1])
             trans = np.array([float(trans[0]), float(trans[1]),float(trans[2]) ])
             root_trans[1] *= -1
             root_trans[2] *= -1
             trans = scale * (root_trans + trans)
 
-            scale = np.reshape(scale,(1,-1))
-            trans = np.reshape(trans,(1,-1))
-
-        return np.float32(theta), np.float32(betas), np.float32(trans), np.float32(scale) #  return pose, betas, trans, scale
+        return np.float32(theta), np.float32(betas), np.float32(np.reshape(trans,(1,-1))), np.float32(np.reshape(scale,(1,-1))),  np.float32(root_rot)#  return pose, betas, trans, scale
+        #return theta, betas, trans, scale
 
     def update_smpl_params(self, pose, betas, trans, scale, view_id):
         # body shape and scale doesn't need to change
