@@ -42,8 +42,11 @@ class EvaluatorTex(object):
 
         # neural voxelization components
         self.smpl = SMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl').to(self.device)
-        self.tet_smpl = TetraSMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',
-                                  './data/tetra_smpl.npz').to(self.device)
+        #self.tet_smpl = TetraSMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',
+        #                          './data/tetra_smpl.npz').to(self.device)
+        self.tet_smpl = TetraSMPL(
+            '/home/nas3_userJ/shimgyumin/fasker/TailorNet_dataset/smpl/basicmodel_m_lbs_10_207_0_v1.0.0.pkl',
+            './data/tetra_smpl.npz').to(self.device)
         smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
             util.read_smpl_constants('./data')
         self.smpl_faces = smpl_faces
@@ -909,10 +912,10 @@ class EvaluatorTex(object):
         return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
 
 
-    def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
+    def test_tex_pifu(self, img, mesh_v, gt_vert_cam):
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
-        gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
+
         vol = self.voxelization(gt_vert_cam)
 
         group_size = 512 * 128
@@ -1040,11 +1043,11 @@ class EvaluatorTex(object):
         return sampled_points_proj
 
 
-    def test_pifu(self, img,  vol_res, betas, pose, scale, trans):
+    def test_pifu(self, img,  vol_res,gt_vert_cam):
         self.pamir_tex_net.eval()
         #self.graph_cnn.eval()  # lock BN and dropout
         #self.smpl_param_regressor.eval()  # lock BN and dropout
-        gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
+
         vol = self.voxelization(gt_vert_cam)
         group_size = 512 * 80
         grid_ov = self.forward_infer_occupancy_value_grid_octree(img,  vol, vol_res, group_size)
