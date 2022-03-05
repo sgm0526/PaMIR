@@ -900,7 +900,7 @@ def validation(pretrained_checkpoint_pamir,
 
     if measure_deephuman:
         val_ds = TrainingImgDataset_deephuman(
-            '/home/nas1_temp/dataset/Deephuman', img_h=const.img_res, img_w=const.img_res,
+            '/home/nas1_temp/dataset/Deephuman_norot_no', img_h=const.img_res, img_w=const.img_res,
             training=False, testing_res=256,
             view_num_per_item=360,
             point_num=5000,
@@ -1088,22 +1088,51 @@ def validation(pretrained_checkpoint_pamir,
             vert = scale * vert + trans
 
         else:
+
             betas= batch['betas']
             pose = batch['pose']
             scale = batch['scale']
             trans = batch['trans']
-            smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
-                util.read_smpl_constants('./data')
+            smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = util.read_smpl_constants('./data')
 
-
-            init_smpl_fname = os.path.join(out_dir, model_id + '_gt2_smpl.obj')
 
             vert = torch.matmul(evaluater.tet_smpl(pose, betas), batch['rot'].permute(0, 2, 1))
             vert[:, :, 1] *= -1
             vert[:, :, 2] *= -1
-            #import pdb; pdb.set_trace()
-            vert = scale *  vert  + trans
+            # import pdb; pdb.set_trace()
+            vert = scale * vert + trans
+            init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl.obj')
+            obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces}, init_smpl_fname)
+            import pdb;
+            pdb.set_trace()
 
+            vert = scale * evaluater.tet_smpl(pose, betas)+ trans
+            init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl2.obj')
+            obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces}, init_smpl_fname)
+
+
+            import pdb; pdb.set_trace()
+            import cv2 as cv
+            check = pose.detach().cpu().numpy().squeeze()
+            check1 =  cv.Rodrigues(check[:3])[0]
+            rotated_pose = np.matmul(batch['rot'][0].transpose(1,0).cpu().numpy(), check1)
+            #rotated_pose = np.matmul(check1, batch['rot'][0].cpu().numpy())
+
+            check[:3]=np.squeeze(cv.Rodrigues(rotated_pose)[0])
+            pose = torch.from_numpy(np.float32(check)).unsqueeze(0).cuda()
+
+            #rotated_pose = np.matmul(check[:3], batch['rot'][0].transpose(1, 0).cpu().numpy())
+            #rotated_root = torch.matmul(pose[:,:3], batch['rot'].permute(0, 2, 1))
+            #rotated_root[:,:,1]*=-1
+            #rotated_root[:, :,2] *= -1
+            #pose[:,:3] =rotated_root.squeeze()
+
+
+            vert = scale * evaluater.tet_smpl(pose, betas)+ trans
+            init_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl_.obj')
+            obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces},init_smpl_fname)
+
+            import pdb; pdb.set_trace()
 
         if True:
             mesh = evaluater.test_pifu(batch['img'], vol_res,vert)
