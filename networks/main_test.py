@@ -900,7 +900,7 @@ def validation(pretrained_checkpoint_pamir,
 
     if measure_deephuman:
         val_ds = TrainingImgDataset_deephuman(
-            '/home/nas1_temp/dataset/Deephuman', img_h=const.img_res, img_w=const.img_res,
+            '/home/nas1_temp/dataset/Deephuman_norot', img_h=const.img_res, img_w=const.img_res,
             training=False, testing_res=256,
             view_num_per_item=360,
             point_num=5000,
@@ -933,7 +933,7 @@ def validation(pretrained_checkpoint_pamir,
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
 
-        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_256gcmroptmask_gttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
+        out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_256gcmroptmask_nogttrans__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         # out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validationdeephuman_debug__256gtsmplv2__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
         #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
 
@@ -998,7 +998,7 @@ def validation(pretrained_checkpoint_pamir,
                                                                                              return_predcam=True)
 
 
-            gt_trans = batch['trans']
+            gt_trans = None #batch['trans']
             cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
 
             with torch.no_grad():
@@ -1072,10 +1072,18 @@ def validation(pretrained_checkpoint_pamir,
             trans = batch['trans']
 
 
-            # vert = torch.matmul(evaluater.tet_smpl(pose, betas), batch['rot'].permute(0, 2, 1))
-            # vert[:, :, 1] *= -1
-            # vert[:, :, 2] *= -1
-            # vert = scale *  vert  + trans #gtmpl
+            vert = torch.matmul(evaluater.tet_smpl(pose, betas), batch['rot'].permute(0, 2, 1))
+            vert[:, :, 1] *= -1
+            vert[:, :, 2] *= -1
+            vert = scale *  vert  + trans #gtmpl
+            #vert = scale * evaluater.tet_smpl(pose, betas) + trans  # gtmpl
+            optm_smpl_fname = os.path.join(out_dir, model_id + '_gt_smpl.obj')
+            smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
+                util.read_smpl_constants('./data')
+            obj_io.save_obj_data({'v': vert.squeeze().detach().cpu().numpy(), 'f': smpl_faces},
+                                 optm_smpl_fname)
+            import pdb; pdb.set_trace()
+
 
 
 
@@ -1148,7 +1156,7 @@ def validation(pretrained_checkpoint_pamir,
 
         if measure_deephuman:
             model_number = str( batch['model_id'].item()).zfill(4)
-            tgt_meshname =f'/home/nas1_temp/dataset/Deephuman/image_data/{model_number}/mesh_after.obj'
+            tgt_meshname =f'/home/nas1_temp/dataset/Deephuman_norot/image_data/{model_number}/mesh_after.obj'
         else:
             model_number = str(501 + batch['model_id'].item()).zfill(4)
             tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_number}/{model_number}.obj'
