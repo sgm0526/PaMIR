@@ -74,7 +74,7 @@ class Trainer(BaseTrainer):
 
         # neural renderer
 
-        self.UseGCMR=False
+        self.UseGCMR=True
         self.depthaware = False
         if self.UseGCMR:
 

@@ -542,15 +542,15 @@ class TexPamirNetAttention_nerf(BaseNetwork):
     def __init__(self):
         super(TexPamirNetAttention_nerf, self).__init__()
         self.feat_ch_2D = 256
-        self.feat_ch_3D = 32
+        self.feat_ch_3D =32
         self.feat_ch_out = 3 + 1+ 1 #+1
         self.feat_ch_occupancy = 128
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
         #self.add_module('cg', hg2.HourglassNet(3+2 ,2, 3, 128, self.feat_ch_2D))
-        self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
+        self.add_module('ve', ve2.VolumeEncoder_16(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp', MLP_NeRF(self.feat_ch_2D + self.feat_ch_3D + num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
+        self.add_module('mlp', MLP_NeRF(self.feat_ch_2D + self.feat_ch_3D +num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
         #self.add_module('mlp',  MLP_NeRF(self.feat_ch_2D  + 3, self.feat_ch_occupancy, self.feat_ch_out))
 
         logging.info('#trainable params of 2d encoder = %d' %
@@ -593,7 +593,6 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_feat_3D = F.grid_sample(input=vol_feat, grid=grid_3d, align_corners=False,
                                    mode='bilinear', padding_mode='border')
         pt_feat_3D = pt_feat_3D.view([batch_size, -1, point_num, 1])
-
         pt_feat = torch.cat([pt_feat_2D, pt_feat_3D], dim=1) #batch_size, ch, point_num, 1
         #pt_feat = pt_feat_2D
 

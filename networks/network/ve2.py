@@ -87,6 +87,7 @@ class VolumeEncoder(BaseNetwork):
         self.conv1 = nn.Conv3d(self.num_in, self.num_inter, bias=True, kernel_size=5,
                                stride=2, padding=4, dilation=2)
         self.bn1 = nn.GroupNorm(4, self.num_inter)
+
         self.conv2 = nn.Conv3d(self.num_inter, self.num_out, bias=True, kernel_size=5,
                                stride=2, padding=4, dilation=2)
         self.bn2 = nn.GroupNorm(4, self.num_out)
@@ -123,4 +124,64 @@ class VolumeEncoder(BaseNetwork):
             out = self.r2(out)
             out = self.r3(out)
             return out
+
+
+class VolumeEncoder_16(BaseNetwork):
+    """CycleGan Encoder"""
+    def __init__(self, num_in=3, num_out=32):
+        super(VolumeEncoder_16, self).__init__()
+        self.num_in = num_in
+        self.num_out = num_out
+        self.num_inter = 8
+        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv3d(self.num_in, self.num_inter, bias=True, kernel_size=5,
+                               stride=2, padding=4, dilation=2)
+        self.bn1 = nn.GroupNorm(4, self.num_inter)
+
+        self.conv_inter1 = nn.Conv3d(self.num_inter, self.num_inter, bias=True, kernel_size=5,
+                               stride=2, padding=4, dilation=2)
+        self.bn_inter1 = nn.GroupNorm(4,  self.num_inter)
+
+        self.conv2 = nn.Conv3d(self.num_inter, self.num_out, bias=True, kernel_size=5,
+                               stride=2, padding=4, dilation=2)
+        self.bn2 = nn.GroupNorm(4, self.num_out)
+
+        self.r1 = Residual3D(self.num_out, self.num_out)
+        self.r2 = Residual3D(self.num_out, self.num_out)
+        self.r3 = Residual3D(self.num_out, self.num_out)
+
+        self.conv_out1 = nn.Conv3d(self.num_out, self.num_out, bias=True, kernel_size=3,
+                                   stride=1, padding=1, dilation=1)
+        self.conv_out2 = nn.Conv3d(self.num_out, self.num_out, bias=True, kernel_size=3,
+                                   stride=1, padding=1, dilation=1)
+
+        self.init_weights()
+
+    def forward(self, x, intermediate_output=True):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv_inter1(out)
+        out = self.bn_inter1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        if intermediate_output:
+            out = self.r1(out)
+            tmpout1 = self.conv_out1(out)
+            out = self.r2(out)
+            tmpout2 = self.conv_out2(out)
+            out = self.r3(out)
+            return [tmpout1, tmpout2, out]
+        else:
+            out = self.r1(out)
+            out = self.r2(out)
+            out = self.r3(out)
+            return out
+
+
 
