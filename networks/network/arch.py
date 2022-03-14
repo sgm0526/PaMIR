@@ -547,7 +547,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         self.feat_ch_occupancy = 128
         self.add_module('cg', cg2.CycleGANEncoder(3+2, self.feat_ch_2D))
         #self.add_module('cg', hg2.HourglassNet(3+2 ,2, 3, 128, self.feat_ch_2D))
-        self.add_module('ve', ve2.VolumeEncoder_16(3, self.feat_ch_3D))
+        self.add_module('ve', ve2.VolumeEncoder_8(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
         self.add_module('mlp', MLP_NeRF(self.feat_ch_2D + self.feat_ch_3D +num_freq*2*3+3, self.feat_ch_occupancy, self.feat_ch_out))
