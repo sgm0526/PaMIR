@@ -1179,5 +1179,3 @@ if __name__ == '__main__':
     #   pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/0223_checkpoint.pt')
     #
 
-    inference_main_test_flow_feature('/home/nas1_temp/dataset/deepfashion/our_test/', geometry_model_dir, texture_model_dir)
-
