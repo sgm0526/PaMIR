@@ -1187,31 +1187,22 @@ def validation_texture(pretrained_checkpoint_pamir,
         mesh_color = evaluater.test_tex_pifu(batch['img'], v_cam, batch['betas'],batch['pose'], batch['scale'],batch['trans'])
         mesh_fname = os.path.join(out_dir, model_id + '_gt_textured.obj')
 
-        if False:
-            colored_mesh=dict()
-            colored_mesh['v'] =mesh_v[0].squeeze().detach().cpu().numpy()
-            colored_mesh['f'] = mesh_f[0].squeeze().detach().cpu().numpy()
-            colored_mesh['vc'] = mesh_color.squeeze()
-            obj_io.save_obj_data(colored_mesh,
-                                 mesh_fname)
-        else:
-
-            obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
-                                  'f': mesh_f[0].squeeze().detach().cpu().numpy(),
-                                  'vc': mesh_color.squeeze()},
-                                 mesh_fname)
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
 
 
         ## render using vertex color
-        #rendered_img = render_mesh(colored_mesh, render_angle=batch['view_id'].item()+180 )
-        rendered_img = render_mesh(mesh_fname, render_angle=batch['view_id'].item()+180 )
+        target_viewid = -(batch['view_id'].item()+180)
+        rendered_img = render_mesh(mesh_fname, render_angle=target_viewid )
         rendered_img = torch.from_numpy(rendered_img).permute(2,0,1).unsqueeze(0 )
         # save_image
         image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
         save_image(rendered_img, image_fname)
 
         ##
-        if True:
+        if False:
 
             target_viewid =str(batch['view_id'].item()+180).zfill(4)
             tgt_imagename = f'/home/nas1_temp/dataset/Thuman/image_data_vc/{model_number}/color/{target_viewid}.jpg'
@@ -1219,7 +1210,7 @@ def validation_texture(pretrained_checkpoint_pamir,
             gt_img = np.float32(cv.cvtColor( gt_img , cv.COLOR_RGB2BGR)) / 255.
             gt_img= torch.from_numpy( gt_img .transpose((2, 0, 1))).unsqueeze(0).cuda()
         else:
-            gt_img= render_mesh(tgt_mesh, render_angle=batch['view_id'].item()+180 )
+            gt_img= render_mesh(tgt_meshname, render_angle=target_viewid  )
             gt_img = torch.from_numpy(gt_img).permute(2, 0, 1).unsqueeze(0)
 
 
