@@ -19,7 +19,7 @@ import logging
 import math
 import mrcfile
 
-from network.arch import PamirNet, TexPamirNetAttention,TexPamirNetAttention_nerf, NeuralRenderer, NeuralRenderer_coord
+from network.arch import PamirNet, TexPamirNetAttention,TexPamirNetAttention_nerf, NeuralRenderer, NeuralRenderer_coord, TexPamirNetAttention_nerf_multiview
 from neural_voxelization_layer.voxelize import Voxelization
 from neural_voxelization_layer.smpl_model import TetraSMPL
 from util.img_normalization import ImgNormalizerForResnet
@@ -44,10 +44,6 @@ class EvaluatorTex(object):
         self.smpl = SMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl').to(self.device)
         self.tet_smpl = TetraSMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',
                                   './data/tetra_smpl.npz').to(self.device)
-        #self.tet_smpl = TetraSMPL(
-        #    '/home/nas3_userJ/shimgyumin/fasker/TailorNet_dataset/smpl/basicmodel_m_lbs_10_207_0_v1.0.0.pkl',
-        #    './data/tetra_smpl.npz').to(self.device)
-
         smpl_vertex_code, smpl_face_code, smpl_faces, smpl_tetras = \
             util.read_smpl_constants('./data')
         self.smpl_faces = smpl_faces
@@ -58,7 +54,7 @@ class EvaluatorTex(object):
                                          batch_size=1).to(self.device)
         # pamir_net
         #self.pamir_net = PamirNet().to(self.device)
-        self.pamir_tex_net = TexPamirNetAttention_nerf().to(self.device)
+        self.pamir_tex_net = TexPamirNetAttention_nerf_multiview().to(self.device)
         self.graph_mesh = Mesh()
 
         self.decoder_output_size = 128
@@ -109,7 +105,7 @@ class EvaluatorTex(object):
         pts_ov = pts_ov.reshape([test_res, test_res, test_res])
         return pts_ov
 
-    def test_nerf_target(self, img, betas, pose, scale, trans, view_diff, return_cam_loc=False, return_flow_feature=False):
+    def test_nerf_target(self, img, betas, pose, scale, trans, view_id, target_view_id, return_cam_loc=False, return_flow_feature=False):
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
@@ -128,7 +124,6 @@ class EvaluatorTex(object):
         ray_start = const.ray_start#cam_tz - 0.87  # (
         ray_end = const.ray_end#cam_tz + 0.87
         num_steps = const.num_steps
-        hierarchical = const.hierarchical
 
 
         ## todo hierarchical sampling
@@ -140,10 +135,18 @@ class EvaluatorTex(object):
 
         # 1, img_size*img_size, num_steps, 3
         points_cam[:, :, :, 2] += cam_tz
-        points_cam_source = self.rotate_points(points_cam, view_diff)
-        points_cam_source_proj = self.project_points(points_cam_source, cam_f, cam_c, cam_tz)
-        #batch_size, 512*512, num_step, 3
 
+        points_cam_source_list = []
+        points_cam_source_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - target_view_id
+            points_cam_source = self.rotate_points(points_cam, view_diff)
+            points_cam_source_proj = self.project_points(points_cam_source, cam_f, cam_c, cam_tz)
+            points_cam_source_list.append(points_cam_source.unsqueeze(1))
+            points_cam_source_proj_list.append(points_cam_source_proj.unsqueeze(1))
+
+        points_cam_source = torch.cat(points_cam_source_list, 1)
+        points_cam_source_proj = torch.cat(points_cam_source_proj_list, 1)
 
 
 
@@ -152,22 +155,21 @@ class EvaluatorTex(object):
         pts_group_num = (img_size * img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
         pts_clr_warped = []
-        pts_final_weights = []
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
-            sampled_points_proj=   points_cam_source_proj[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
+            sampled_points = points_cam_source[:, :,(gi * num_ray):((gi + 1) * num_ray), :, :] # 1, group_size, num_step, 3
+            sampled_points_proj=   points_cam_source_proj[:, :, (gi * num_ray):((gi + 1) * num_ray), :,:]
             sampled_z_vals = z_vals[:, (gi * num_ray):((gi + 1) * num_ray), :,:]
-            sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
+            sampled_rays_d_target = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
-            num_ray_part = sampled_points.size(1)
+            num_ray_part = sampled_points.size(2)
             #num_ray -> num_ray_part
 
 
 
             with torch.no_grad():
-                sampled_points  =  sampled_points.reshape(batch_size, -1, 3) # 1 group_size*num_step, 3
-                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+                sampled_points  =  sampled_points.reshape(batch_size, -1,  num_ray_part*num_steps, 3) # 1 group_size*num_step, 3
+                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1,  num_ray_part*num_steps, 2)
 
                 nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, sampled_points, sampled_points_proj, return_flow_feature)
@@ -175,27 +177,48 @@ class EvaluatorTex(object):
                 if const.hierarchical:
                     with torch.no_grad():
                         alphas = nerf_output_sigma.reshape(batch_size, num_ray_part , num_steps, -1)
+                        # sign = (alphas > 0.5).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(  batch_size, num_ray_part, 1).to(self.device)
+                        # max_index = sign.unsqueeze(-1).argmax(dim=2)
+                        # max_index[max_index == 0] += 1
+                        # start_index = max_index - 1
+                        # start_z_vals = torch.gather(sampled_z_vals, 2, start_index.unsqueeze(-1))
+                        # end_z_vals = torch.gather(sampled_z_vals, 2, max_index.unsqueeze(-1))
+                        # z_vals_diff = end_z_vals - start_z_vals
+                        # line_01 = torch.linspace(0, 1, num_steps)[None,][None,].repeat(batch_size, num_ray_part, 1).cuda()
+                        # fine_z_vals = start_z_vals.squeeze(-1) + z_vals_diff.squeeze(-1) * line_01  # batch, num_ray, 24
+
                         alphas_shifted = torch.cat([torch.ones_like(alphas[:, :, :1]), 1 - alphas + 1e-10], -2)
                         weights = alphas * torch.cumprod(alphas_shifted, -2)[:, :,:-1] + 1e-5  # batch, num_ray, 24, 1
                         sampled_z_vals_mid = 0.5 * (  sampled_z_vals[:, :, :-1] + sampled_z_vals[:, :, 1:])  # batch, num_ray, 23, 1
                         fine_z_vals = sample_pdf(sampled_z_vals_mid.reshape(-1, num_steps - 1),   weights.reshape(-1, num_steps)[:, 1:-1], num_steps, det=False).detach()
                         fine_z_vals = fine_z_vals.reshape(batch_size, num_ray_part , num_steps)
 
-                        sampled_rays_d_world = sampled_rays_d_world.unsqueeze(-2).repeat(1, 1, num_steps, 1)
-                        fine_points = sampled_rays_d_world * fine_z_vals[..., None]
-                        fine_points[:, :, :, 2] += cam_tz
-                        fine_points = self.rotate_points(fine_points, view_diff)
-                        fine_points_proj = self.project_points(fine_points, cam_f, cam_c, cam_tz)
 
                         all_z_vals = torch.cat([sampled_z_vals, fine_z_vals.unsqueeze(-1)], dim=2)
-
                         _, indices = torch.sort(all_z_vals, dim=2)
+
+                        sampled_rays_d_target = sampled_rays_d_target.unsqueeze(-2).repeat(1, 1, num_steps, 1)
+                        fine_points = sampled_rays_d_target * fine_z_vals[..., None]
+                        fine_points[:, :, :, 2] += cam_tz
+
+                        fine_points_list = []
+                        fine_points_proj_list = []
+                        for i in range(img.size(1)):
+                            view_diff = view_id[:, i] - target_view_id
+                            fine_points_ = self.rotate_points(fine_points, view_diff)
+                            fine_points_proj = self.project_points(fine_points_, cam_f, cam_c, cam_tz)
+                            fine_points_ = fine_points_.reshape(batch_size, -1, 3)
+                            fine_points_proj = fine_points_proj.reshape(batch_size, -1, 2)
+
+                            fine_points_list.append(fine_points_.unsqueeze(1))
+                            fine_points_proj_list.append(fine_points_proj.unsqueeze(1))
+                        fine_points_ = torch.cat(fine_points_list, 1)
+                        fine_points_proj = torch.cat(fine_points_proj_list, 1)
+
 
 
                     nerf_output_clr_fine_, nerf_output_clr_fine, _, _, nerf_output_sigma_fine = self.pamir_tex_net.forward(
-                        img, vol, fine_points.reshape(batch_size, num_ray_part  * num_steps, 3),
-                        fine_points_proj.reshape(batch_size, num_ray_part  * num_steps, 2),
-                    return_flow_feature)
+                        img, vol, fine_points_,fine_points_proj,return_flow_feature)
 
                     nerf_output_clr_ = torch.gather(torch.cat(
                         [nerf_output_clr_.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr_.size(-1)),
@@ -209,17 +232,20 @@ class EvaluatorTex(object):
                         [nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, 1),
                          nerf_output_sigma_fine.reshape(batch_size, num_ray_part, num_steps, 1)], dim=2), 2, indices)
                     sampled_z_vals =torch.gather(all_z_vals, 2, indices)
+                else:
+                    nerf_output_clr_ = nerf_output_clr_.reshape(batch_size, num_ray_part, num_steps, 3)
+                    nerf_output_clr = nerf_output_clr.reshape(batch_size, num_ray_part, num_steps, 3)
+                    nerf_output_sigma = nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, 1)
 
                 all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-                pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature, weight_refine=return_flow_feature)
+                pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature)
 
                 all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-                feature_pred, _, final_weights = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
-                                                        white_back=not return_flow_feature, weight_refine=return_flow_feature)
+                feature_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
+                                                        white_back=not return_flow_feature)
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
             pts_clr_warped.append(feature_pred.detach().cpu())
-            pts_final_weights.append(final_weights.detach().cpu())
             #pts_clr_pred.append(pixels_pred)
             #pts_clr_warped.append(pixels_warped)
         ##
@@ -227,15 +253,14 @@ class EvaluatorTex(object):
         pts_clr_pred = pts_clr_pred.permute(0,2,1).reshape(batch_size, pts_clr_pred.size(2), img_size,img_size)
         pts_clr_warped= torch.cat(pts_clr_warped, dim=1)
         pts_clr_warped= pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
-        pts_final_weights = torch.cat(pts_final_weights, dim=1)
-        pts_final_weights = pts_final_weights.sum(dim=2).permute(0,2,1).reshape(batch_size, 1, img_size, img_size)
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
             return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
-        if return_flow_feature:
-            return pts_clr_pred, pts_clr_warped, pts_final_weights
+
         return pts_clr_pred, pts_clr_warped
-    def run_Secant_method(self, img, vol, f_low, f_high, z_low, z_high,n_secant_steps, sampled_rays_d_world, view_diff, threshold):
+
+    def run_Secant_method(self, img, vol, f_low, f_high, z_low, z_high, n_secant_steps, sampled_rays_d_world, view_id, target_view_id,
+                          threshold):
 
         batch_size = img.size(0)
         num_rays = z_low.size(1)
@@ -245,8 +270,19 @@ class EvaluatorTex(object):
             p_mid = sampled_rays_d_world.unsqueeze(-2) * z_pred
             p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
 
-            z_point = self.rotate_points(p_mid, view_diff).reshape(batch_size, num_rays , 3)
-            z_point_proj = self.project_points(z_point , const.cam_f, const.cam_c, const.cam_tz).reshape(batch_size, num_rays , 2)
+            z_point_list = []
+            z_point_proj_list = []
+            for i in range(img.size(1)):
+                view_diff = view_id[:, i] - target_view_id
+                z_point = self.rotate_points(p_mid, view_diff)
+                z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz)
+                z_point = z_point.reshape(batch_size, -1, 3)
+                z_point_proj = z_point_proj.reshape(batch_size, -1, 2)
+
+                z_point_list.append(z_point.unsqueeze(1))
+                z_point_proj_list.append(z_point_proj.unsqueeze(1))
+            z_point = torch.cat(z_point_list, 1)
+            z_point_proj = torch.cat(z_point_proj_list, 1)
             nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, z_point, z_point_proj)
             alphas = nerf_output_sigma.reshape(batch_size, num_rays, 1, 1)
@@ -264,20 +300,29 @@ class EvaluatorTex(object):
 
         return z_pred.data
 
-    def run_Bisection_method(self, img, vol, z_low, z_high, n_secant_steps, sampled_rays_d_world, view_diff, threshold):
+    def run_Bisection_method(self, img, vol, z_low, z_high, n_secant_steps, sampled_rays_d_world, view_id, target_view_id, threshold):
 
         batch_size = img.size(0)
         num_rays = z_low.size(1)
 
         z_pred = (z_low + z_high) / 2.
         for i in range(n_secant_steps):
-
             p_mid = sampled_rays_d_world.unsqueeze(-2) * z_pred
             p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
 
-            z_point = self.rotate_points(p_mid, view_diff).reshape(batch_size, num_rays, 3)
-            z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz).reshape(batch_size,
-                                                                                                      num_rays, 2)
+            z_point_list = []
+            z_point_proj_list = []
+            for i in range(img.size(1)):
+                view_diff = view_id[:, i] - target_view_id
+                z_point = self.rotate_points(p_mid, view_diff)
+                z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz)
+                z_point = z_point.reshape(batch_size, -1, 3)
+                z_point_proj = z_point_proj.reshape(batch_size, -1, 2)
+
+                z_point_list.append(z_point.unsqueeze(1))
+                z_point_proj_list.append(z_point_proj.unsqueeze(1))
+            z_point = torch.cat(z_point_list, 1)
+            z_point_proj = torch.cat(z_point_proj_list, 1)
             nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
                 img, vol, z_point, z_point_proj)
             alphas = nerf_output_sigma.reshape(batch_size, num_rays, 1, 1)
@@ -288,9 +333,9 @@ class EvaluatorTex(object):
             z_high[inz_low == 0] = z_pred[inz_low == 0]
             z_pred = 0.5 * (z_low + z_high)
 
-
         return z_pred.data
-    def test_surface_rendering(self, img, betas, pose, scale, trans, view_diff):
+    def test_surface_rendering(self, img, betas, pose, scale, trans, view_id, target_view_id, return_cam_loc=False,
+                               return_flow_feature=False):
         # self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
@@ -308,48 +353,54 @@ class EvaluatorTex(object):
         ray_start = const.ray_start  # cam_tz - 0.87  # (
         ray_end = const.ray_end  # cam_tz + 0.87
         num_steps = const.num_steps
-        hierarchical = const.hierarchical
 
         ## todo hierarchical sampling
 
         points_cam, z_vals, rays_d_cam = get_initial_rays_trig(batch_size, num_steps,
-                                                               resolution=(const.img_res, const.img_res),
+                                                               resolution=(int(const.img_res / const.down_scale),
+                                                                           int(const.img_res / const.down_scale)),
                                                                device=self.device, fov=fov_degree, ray_start=ray_start,
                                                                ray_end=ray_end)  # batch_size, pixels, num_steps, 1
 
         # 1, img_size*img_size, num_steps, 3
         points_cam[:, :, :, 2] += cam_tz
-        points_cam_source = self.rotate_points(points_cam, view_diff)
-        points_cam_source_proj = self.project_points(points_cam_source, cam_f, cam_c, cam_tz)
-        # batch_size, 512*512, num_step, 3
 
-        num_ray = 24000
-        img_size = int(img_size )
+        points_cam_source_list = []
+        points_cam_source_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - target_view_id
+            points_cam_source = self.rotate_points(points_cam, view_diff)
+            points_cam_source_proj = self.project_points(points_cam_source, cam_f, cam_c, cam_tz)
+            points_cam_source_list.append(points_cam_source.unsqueeze(1))
+            points_cam_source_proj_list.append(points_cam_source_proj.unsqueeze(1))
+
+        points_cam_source = torch.cat(points_cam_source_list, 1)
+        points_cam_source_proj = torch.cat(points_cam_source_proj_list, 1)
+
+        num_ray = 5000
+        img_size = int(img_size / const.down_scale)
         pts_group_num = (img_size * img_size + num_ray - 1) // num_ray
         pts_clr_pred = []
         pts_clr_warped = []
-
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            sampled_points = points_cam_source[:, (gi * num_ray):((gi + 1) * num_ray), :,
+            sampled_points = points_cam_source[:, :, (gi * num_ray):((gi + 1) * num_ray), :,
                              :]  # 1, group_size, num_step, 3
-            sampled_points_proj = points_cam_source_proj[:, (gi * num_ray):((gi + 1) * num_ray), :, :]
+            sampled_points_proj = points_cam_source_proj[:, :, (gi * num_ray):((gi + 1) * num_ray), :, :]
             sampled_z_vals = z_vals[:, (gi * num_ray):((gi + 1) * num_ray), :, :]
-            sampled_rays_d_world = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
+            sampled_rays_d_target = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
-            num_ray_part = sampled_points.size(1)
+            num_ray_part = sampled_points.size(2)
             # num_ray -> num_ray_part
 
             with torch.no_grad():
-                sampled_points = sampled_points.reshape(batch_size, -1, 3)  # 1 group_size*num_step, 3
-                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
+                sampled_points = sampled_points.reshape(batch_size, -1, num_ray_part * num_steps,
+                                                        3)  # 1 group_size*num_step, 3
+                sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, num_ray_part * num_steps, 2)
 
                 nerf_output_clr_, nerf_output_clr, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
-                    img, vol, sampled_points, sampled_points_proj)
-
+                    img, vol, sampled_points, sampled_points_proj, return_flow_feature)
                 alphas = nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, -1)
-
-                # max_index = abs(alphas - 0.5).argmin(dim=2)
                 threshold = const.threshold
                 sign = (alphas > threshold).int().squeeze(-1) * torch.linspace(2, 1, num_steps)[None,][None,].repeat(
                     batch_size, num_ray_part, 1).to(self.device)
@@ -363,20 +414,31 @@ class EvaluatorTex(object):
                 start_alphas_vals = torch.gather(alphas, 2, start_index.unsqueeze(-1))
                 end_alphas_vals = torch.gather(alphas, 2, max_index.unsqueeze(-1))
 
-                #z_pred = start_z_vals
+                # z_pred = start_z_vals
                 z_pred = self.run_Bisection_method(img, vol, start_z_vals, end_z_vals,
-                                                3, sampled_rays_d_world, view_diff, threshold)
-                #z_pred = self.run_Secant_method(img, vol, start_alphas_vals, end_alphas_vals, start_z_vals, end_z_vals,
+                                                   3, sampled_rays_d_target, view_id, target_view_id, threshold)
+                # z_pred = self.run_Secant_method(img, vol, start_alphas_vals, end_alphas_vals, start_z_vals, end_z_vals,
                 #                                3, sampled_rays_d_world, view_diff)
 
-                p_mid = sampled_rays_d_world.unsqueeze(-2) * z_pred
+                p_mid = sampled_rays_d_target.unsqueeze(-2) * z_pred
                 p_mid[:, :, :, 2] += const.cam_tz  # batch, numray, z=1, 3
-                z_point = self.rotate_points(p_mid, view_diff).reshape(batch_size, num_ray_part, 3)
-                z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz).reshape(batch_size,
-                                                                                                          num_ray_part, 2)
+                z_point_list = []
+                z_point_proj_list = []
+                for i in range(img.size(1)):
+                    view_diff = view_id[:, i] - target_view_id
+                    z_point = self.rotate_points(p_mid, view_diff)
+                    z_point_proj = self.project_points(z_point, const.cam_f, const.cam_c, const.cam_tz)
+                    z_point  = z_point .reshape(batch_size, -1, 3)
+                    z_point_proj = z_point_proj.reshape(batch_size, -1, 2)
+
+                    z_point_list.append(z_point .unsqueeze(1))
+                    z_point_proj_list.append(z_point_proj.unsqueeze(1))
+                z_point  = torch.cat(z_point_list, 1)
+                z_point_proj = torch.cat(z_point_proj_list, 1)
+
 
                 pixels_pred, feature_pred, _, _, nerf_output_sigma = self.pamir_tex_net.forward(
-                    img, vol, z_point ,z_point_proj )
+                    img, vol, z_point, z_point_proj)
 
                 pixels_pred[~ray_mask[..., 0]] = 1
                 feature_pred[~ray_mask[..., 0]] = 1
@@ -384,16 +446,20 @@ class EvaluatorTex(object):
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
             pts_clr_warped.append(feature_pred.detach().cpu())
-
+            # pts_clr_pred.append(pixels_pred)
+            # pts_clr_warped.append(pixels_warped)
         ##
         pts_clr_pred = torch.cat(pts_clr_pred, dim=1)
         pts_clr_pred = pts_clr_pred.permute(0, 2, 1).reshape(batch_size, pts_clr_pred.size(2), img_size, img_size)
         pts_clr_warped = torch.cat(pts_clr_warped, dim=1)
         pts_clr_warped = pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
+        # pts_clr = pts_clr.permute(2,0,1
+        if return_cam_loc:
+            return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
 
         return pts_clr_pred, pts_clr_warped
 
-    def test_nerf_target_sigma(self, img, betas, pose, scale, trans, vol_res):
+    def test_nerf_target_sigma(self, img, view_id, betas, pose, scale, trans, vol_res):
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
 
@@ -411,15 +477,30 @@ class EvaluatorTex(object):
             vol_res, const.cam_R, const.cam_t, const.cam_f, img.size(2))
 
         pts = torch.from_numpy(pts).unsqueeze(0).to(self.device)
-        pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
+       # pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
+
+
+        pts_list = []
+        pts_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - view_id[:,0 ]
+            pts_ = self.rotate_points(pts, view_diff)
+            pts_proj_= self.project_points(pts_, cam_f, cam_c, cam_tz)
+            pts_list.append(pts_ .unsqueeze(1))
+            pts_proj_list.append(pts_proj_.unsqueeze(1))
+
+        pts = torch.cat(pts_list, 1)
+        pts_proj = torch.cat(pts_proj_list , 1)
+        ##
+
 
         group_size= 10000
-        pts_group_num = (pts.shape[1] + group_size - 1) // group_size
+        pts_group_num = (pts.shape[2] + group_size - 1) // group_size
         pts_clr = []
         for gi in tqdm(range(pts_group_num), desc='Sigma query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            sampled_points = pts[:, (gi * group_size):((gi + 1) * group_size), :] # 1, group_size, num_step, 3
-            sampled_points_proj= pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            sampled_points = pts[:, :,(gi * group_size):((gi + 1) * group_size), :] # 1, group_size, num_step, 3
+            sampled_points_proj= pts_proj[:, :, (gi * group_size):((gi + 1) * group_size), :]
             # sampled_rays_d_world  = rays_d_cam[:, (gi * num_ray):((gi + 1) * num_ray)]
 
 
@@ -428,8 +509,6 @@ class EvaluatorTex(object):
                 # sampled_points_proj = sampled_points_proj.reshape(batch_size, -1, 2)
 
 
-                #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-                #nerf_feat_occupancy = self.pamir_net.get_mlp_feature(img, vol, sampled_points , sampled_points_proj )
 
                 nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net.forward(
                     img, vol, sampled_points, sampled_points_proj)#, img_feat_geo, nerf_feat_occupancy)
@@ -576,15 +655,8 @@ class EvaluatorTex(object):
         betas_orig = betas_new.clone().detach()
         optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
 
-        vert_cam = scale * self.tet_smpl(theta, betas) + trans
-        vol = self.voxelization(vert_cam)
-        vert_cam = vert_cam[:, :6890]
-        vert_cam_proj = self.project_points2(vert_cam, cam_f, cam_c, cam_tz)
-        _, _, att_orig, _, smpl_sdf = self.pamir_tex_net(img, vol, vert_cam ,  vert_cam_proj)
 
 
-        nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
 
 
         for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
@@ -594,59 +666,10 @@ class EvaluatorTex(object):
 
             vol = self.voxelization(vert_tetsmpl_new_cam.detach())
             pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
-            #pred_vert_new_cam = vert_tetsmpl_new_cam[:, :6890]
-            #pred_vert_new_cam = pred_vert_new_cam+torch.normal(0, 0.1, size=pred_vert_new_cam.shape).cuda()
 
-
-            #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
             pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
 
 
-
-            _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
-            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
-
-
-            # nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans, torch.ones(img.shape[0]).cuda()*0)
-            h_grid = pred_vert_new_proj[:, :, 0].view(1, pred_vert_new_proj .size(1), 1, 1)
-            v_grid = pred_vert_new_proj[:, :, 1].view(1, pred_vert_new_proj .size(1), 1, 1)
-            grid_2d = torch.cat([h_grid, v_grid], dim=-1)
-            gt_clr_nerf = F.grid_sample(input=img.to(self.device), grid=grid_2d.to(self.device),
-                                        align_corners=False, mode='bilinear', padding_mode='border').permute(0, 2, 3,
-                                                                                                             1).squeeze(
-                2)  # b,5000,3
-
-            proj_mask = F.grid_sample(input=mask.permute(0, 3, 1, 2).to(self.device), grid=grid_2d.to(self.device),
-                                      align_corners=False, mode='bilinear', padding_mode='border').permute(0, 2, 3,
-                                                                                                           1).squeeze(
-                2)  # b,5000,3
-            loss_mask = nn.MSELoss()(torch.ones_like(proj_mask, device='cuda'), proj_mask)
-
-            ray_d_target = pred_vert_new_cam - cam_t
-            ray_d_target = normalize_vecs(ray_d_target)
-            z_vals_ = torch.linspace(const.ray_start, const.ray_end, const.num_steps, device=self.device).reshape(1, 1,
-                                                                                                                  const.num_steps,
-                                                                                                                  1).repeat(1, pred_vert_new_cam.size(1), 1, 1)
-
-            points = ray_d_target.unsqueeze(2).repeat(1, 1, const.num_steps, 1) * z_vals_
-            # points = points.reshape(1, -1, 3)
-            points = points + cam_t  # target view!!
-
-
-            num_ray = points.size(1)
-            sampled_z_vals = z_vals_
-            sampled_points = points
-
-            #sampled_points_proj = self.forward_project_points(sampled_points, cam_r, cam_t, cam_f,2*cam_c)
-            sampled_points_proj = self.project_points2(sampled_points, cam_f, cam_c, cam_tz)
-            sampled_points = sampled_points.reshape(1, -1, 3)
-            sampled_points_proj = sampled_points_proj.reshape(1, -1, 2)
-
-            nerf_output_clr_, nerf_output_clr, nerf_output_att, nerf_smpl_feat, nerf_output_sigma = self.pamir_tex_net(
-                img, vol, sampled_points, sampled_points_proj)
-            all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-            pixels_pred, _, _ = fancy_integration2(all_outputs.reshape(1, num_ray, const.num_steps, -1),
-                                                   sampled_z_vals, device=self.device, white_back=False)# white_back=True)
 
             mask_down = F.interpolate(mask.permute(0, 3, 1, 2), 128)
             y, x = torch.meshgrid(torch.linspace(-1, 1, 128), torch.linspace(-1, 1, 128))
@@ -655,10 +678,6 @@ class EvaluatorTex(object):
             dist_mat = torch.cdist(in_mask.cuda(), pred_vert_new_proj[0])
             min_dist = dist_mat.min(1)[0].mean()
 
-
-
-            loss_nerf = nn.L1Loss()(pixels_pred, gt_clr_nerf ) #+  nn.L1Loss()(img, gt_clr_nerf )
-            #loss_att = torch.mean((att - att_orig.detach()) ** 2)
 
             loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
                         torch.mean((betas_orig - betas_new) ** 2) * 0.01
@@ -672,248 +691,11 @@ class EvaluatorTex(object):
 
             # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
             #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-        nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
 
+        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]#, nerf_color_pred_before, nerf_color_pred
 
 
-    def optm_smpl_param_pamirwokp(self, img, mask, betas, pose, scale, trans, iter_num):
-        assert iter_num > 0
-        self.pamir_tex_net.eval()
-
-        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
-        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
-        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
-
-        # convert rotmat to theta
-
-        if pose.ndimension() ==2 :
-            theta = pose
-        else:
-            rotmat_host = pose.detach().cpu().numpy().squeeze()
-            theta_host = []
-            for r in rotmat_host:
-                theta_host.append(cv.Rodrigues(r)[0])
-            theta_host = np.asarray(theta_host).reshape((1, -1))
-            theta = torch.from_numpy(theta_host).to(self.device)
-
-        # construct parameters
-
-        theta_new = torch.nn.Parameter(theta)
-        betas_new = torch.nn.Parameter(betas)
-        theta_orig = theta_new.clone().detach()
-        betas_orig = betas_new.clone().detach()
-        optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
-
-        vert_cam = scale * self.tet_smpl(theta, betas) + trans
-        vol = self.voxelization(vert_cam)
-        vert_cam = vert_cam[:, :6890]
-        vert_cam_proj = self.project_points2(vert_cam, cam_f, cam_c, cam_tz)
-        _, _, att_orig, _, smpl_sdf = self.pamir_tex_net(img, vol, vert_cam ,  vert_cam_proj)
-
-
-        nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-
-
-        for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
-            theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
-            vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
-            vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
-
-            vol = self.voxelization(vert_tetsmpl_new_cam.detach())
-            pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
-            #pred_vert_new_cam = vert_tetsmpl_new_cam[:, :6890]
-            #pred_vert_new_cam = pred_vert_new_cam+torch.normal(0, 0.1, size=pred_vert_new_cam.shape).cuda()
-
-            #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
-            pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
-
-
-
-            _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
-            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
-
-
-            loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
-                        torch.mean((betas_orig - betas_new) ** 2) * 0.01
-
-            loss =  loss_fitting * 1.0 + loss_bias * 1.0
-
-            optm.zero_grad()
-            loss.backward()
-            optm.step()
-            print('loss:', loss)
-
-            # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
-            #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-        nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
-    def optm_smpl_param_pamir(self, img, keypoint, betas, pose, scale, trans, iter_num):
-        assert iter_num > 0
-        self.pamir_tex_net.eval()
-
-        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
-        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
-        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
-        kp_conf = keypoint[:, :, -1:].clone()
-        kp_detection = keypoint[:, :, :-1].clone()
-
-        # convert rotmat to theta
-
-        if pose.ndimension() ==2 :
-            theta = pose
-        else:
-            rotmat_host = pose.detach().cpu().numpy().squeeze()
-            theta_host = []
-            for r in rotmat_host:
-                theta_host.append(cv.Rodrigues(r)[0])
-            theta_host = np.asarray(theta_host).reshape((1, -1))
-            theta = torch.from_numpy(theta_host).to(self.device)
-
-        # construct parameters
-
-        theta_new = torch.nn.Parameter(theta)
-        betas_new = torch.nn.Parameter(betas)
-        theta_orig = theta_new.clone().detach()
-        betas_orig = betas_new.clone().detach()
-        optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
-
-        vert_tetsmpl = self.tet_smpl(theta_orig, betas_orig)
-        vert_tetsmpl_cam = scale * vert_tetsmpl + trans
-        keypoint = self.smpl.get_joints(vert_tetsmpl_cam[:, :6890])
-
-
-        nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-
-
-        for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
-            theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
-            vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
-            vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
-            keypoint_new = self.smpl.get_joints(vert_tetsmpl_new_cam[:, :6890])
-            keypoint_new_proj =self.project_points2(
-                keypoint_new, cam_f, cam_c, cam_tz)
-
-            if i % 20 == 0:
-                vol = self.voxelization(vert_tetsmpl_new_cam.detach())
-
-            vol = self.voxelization(vert_tetsmpl_new_cam.detach())
-            pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
-            pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
-
-
-            _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
-            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
-
-
-            loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
-                        torch.mean((betas_orig - betas_new) ** 2) * 0.01
-            loss_kp = torch.mean((kp_conf * keypoint_new_proj - kp_conf * kp_detection) ** 2)
-            loss_bias2 = torch.mean((keypoint[:, :, 2] - keypoint_new[:, :, 2]) ** 2)
-
-            loss =loss_fitting * 1.0 + loss_bias * 1.0 + loss_kp * 500.0 + loss_bias2 * 5
-
-            optm.zero_grad()
-            loss.backward()
-            optm.step()
-            print('loss:', loss)
-
-            # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
-            #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-        nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
-
-    def optm_smpl_param_kp_mask(self, img, mask,keypoint, betas, pose, scale, trans, iter_num):
-        assert iter_num > 0
-        self.pamir_tex_net.eval()
-
-        cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
-        cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
-        cam_t = torch.tensor([0, 0, cam_tz], dtype=torch.float32).to(self.device)
-        kp_conf = keypoint[:, :, -1:].clone()
-        kp_detection = keypoint[:, :, :-1].clone()
-
-        # convert rotmat to theta
-
-        if pose.ndimension() ==2 :
-            theta = pose
-        else:
-            rotmat_host = pose.detach().cpu().numpy().squeeze()
-            theta_host = []
-            for r in rotmat_host:
-                theta_host.append(cv.Rodrigues(r)[0])
-            theta_host = np.asarray(theta_host).reshape((1, -1))
-            theta = torch.from_numpy(theta_host).to(self.device)
-
-        # construct parameters
-
-        theta_new = torch.nn.Parameter(theta)
-        betas_new = torch.nn.Parameter(betas)
-        theta_orig = theta_new.clone().detach()
-        betas_orig = betas_new.clone().detach()
-        optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
-
-        vert_tetsmpl = self.tet_smpl(theta_orig, betas_orig)
-        vert_tetsmpl_cam = scale * vert_tetsmpl + trans
-        keypoint = self.smpl.get_joints(vert_tetsmpl_cam[:, :6890])
-
-
-        nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-
-
-        for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
-            theta_new_ = torch.cat([theta_orig[:, :3], theta_new[:, 3:]], dim=1)
-            vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
-            vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
-            keypoint_new = self.smpl.get_joints(vert_tetsmpl_new_cam[:, :6890])
-            keypoint_new_proj =self.project_points2(
-                keypoint_new, cam_f, cam_c, cam_tz)
-
-            if i % 20 == 0:
-                vol = self.voxelization(vert_tetsmpl_new_cam.detach())
-
-            vol = self.voxelization(vert_tetsmpl_new_cam.detach())
-            pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
-            pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
-
-            mask_down = F.interpolate(mask.permute(0, 3, 1, 2), 128)
-            y, x = torch.meshgrid(torch.linspace(-1, 1, 128), torch.linspace(-1, 1, 128))
-            mask_grid = torch.cat([x[..., None], y[..., None]], dim=-1)
-            in_mask = mask_grid[mask_down[0, 0] == 1]
-            dist_mat = torch.cdist(in_mask.cuda(), pred_vert_new_proj[0])
-            min_dist = dist_mat.min(1)[0].mean()
-
-
-            _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
-            loss_fitting = torch.mean(torch.abs(F.leaky_relu(0.5 - smpl_sdf, negative_slope=0.5)))
-
-
-            loss_bias = torch.mean((theta_orig - theta_new) ** 2) + \
-                        torch.mean((betas_orig - betas_new) ** 2) * 0.01
-            loss_kp = torch.mean((kp_conf * keypoint_new_proj - kp_conf * kp_detection) ** 2)
-            loss_bias2 = torch.mean((keypoint[:, :, 2] - keypoint_new[:, :, 2]) ** 2)
-
-            loss = loss_kp * 10.0 +min_dist
-
-            optm.zero_grad()
-            loss.backward()
-            optm.step()
-            print('loss:', loss)
-
-            # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
-            #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-        nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
-
-
-    def test_tex_pifu(self, img, mesh_v, betas, pose, scale, trans):
+    def test_tex_pifu(self, img, view_id, mesh_v, betas, pose, scale, trans):
         #self.pamir_net.eval()
         self.pamir_tex_net.eval()
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
@@ -927,8 +709,9 @@ class EvaluatorTex(object):
         pts = mesh_v
         pts_proj = self.forward_project_points(
             pts, cam_r, cam_t, cam_f, img.size(2))
+
         clr = self.forward_infer_color_value_group(
-            img, vol, pts, pts_proj, group_size)
+            img,view_id, vol, pts, pts_proj, group_size)
         return clr
 
     def test_att_pifu(self, img, mesh_v, betas, pose, scale, trans):
@@ -956,13 +739,27 @@ class EvaluatorTex(object):
         pts_proj = pts_proj[:, :, :2]
         return pts_proj
 
-    def forward_infer_color_value_group(self, img, vol, pts, pts_proj, group_size):
-        pts_group_num = (pts.size()[1] + group_size - 1) // group_size
+    def forward_infer_color_value_group(self, img, view_id, vol, pts, pts_proj, group_size):
+
+        pts_list = []
+        pts_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - view_id[:, 0]
+            pts_ = self.rotate_points(pts, view_diff)
+            pts_proj_ = self.project_points(pts_, const.cam_f, const.cam_c, const.cam_tz)
+            pts_list.append(pts_.unsqueeze(1))
+            pts_proj_list.append(pts_proj_.unsqueeze(1))
+
+        pts = torch.cat(pts_list, 1)
+        pts_proj = torch.cat(pts_proj_list, 1)
+
+
+        pts_group_num = (pts.size()[2] + group_size - 1) // group_size
         pts_clr = []
         for gi in tqdm(range(pts_group_num), desc='Texture query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            pts_group = pts[:, (gi * group_size):((gi + 1) * group_size), :]
-            pts_proj_group = pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            pts_group = pts[:, :,(gi * group_size):((gi + 1) * group_size), :]
+            pts_proj_group = pts_proj[:, :, (gi * group_size):((gi + 1) * group_size), :]
             outputs = self.forward_infer_color_value(
                 img, vol, pts_group, pts_proj_group)
             pts_clr.append(np.squeeze(outputs[0].detach().cpu().numpy()))
@@ -993,6 +790,7 @@ class EvaluatorTex(object):
         img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
         _, _, att, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj, img_feat_geo)
         return att
+
 
     def load_pretrained_pamir_net(self, model_path):
         if os.path.isdir(model_path):
@@ -1044,14 +842,14 @@ class EvaluatorTex(object):
         return sampled_points_proj
 
 
-    def test_pifu(self, img,  vol_res, betas, pose, scale, trans):
+    def test_pifu(self, img, view_id,  vol_res, betas, pose, scale, trans):
         self.pamir_tex_net.eval()
         #self.graph_cnn.eval()  # lock BN and dropout
         #self.smpl_param_regressor.eval()  # lock BN and dropout
         gt_vert_cam = scale * self.tet_smpl(pose, betas) + trans
         vol = self.voxelization(gt_vert_cam)
         group_size = 512 * 80
-        grid_ov = self.forward_infer_occupancy_value_grid_octree(img,  vol, vol_res, group_size)
+        grid_ov = self.forward_infer_occupancy_value_grid_octree(img, view_id, vol, vol_res, group_size)
         vertices, simplices, normals, _ = measure.marching_cubes_lewiner(grid_ov, 0.5)
 
         mesh = dict()
@@ -1060,7 +858,7 @@ class EvaluatorTex(object):
         mesh['vn'] = normals
         return mesh
 
-    def forward_infer_occupancy_value_grid_octree(self, img,  vol, test_res, group_size,
+    def forward_infer_occupancy_value_grid_octree(self, img, view_id, vol, test_res, group_size,
                                                   init_res=64, ignore_thres=0.05):
         pts, pts_proj = self.generate_point_grids(
             test_res, const.cam_R, const.cam_t, const.cam_f, img.size(2))
@@ -1079,7 +877,7 @@ class EvaluatorTex(object):
             pts_ = pts[test_mask]
             pts_proj_ = pts_proj[test_mask]
             pts_ov[test_mask] = self.forward_infer_occupancy_value_group(
-                img, vol, pts_, pts_proj_, group_size).squeeze()
+                img, view_id, vol, pts_, pts_proj_, group_size).squeeze()
 
             if reso <= 1:
                 break
@@ -1107,7 +905,7 @@ class EvaluatorTex(object):
             reso //= 2
         return pts_ov
 
-    def forward_infer_occupancy_value_group(self, img, vol, pts, pts_proj, group_size):
+    def forward_infer_occupancy_value_group(self, img, view_id, vol, pts, pts_proj, group_size):
         assert isinstance(pts, np.ndarray)
         assert len(pts.shape) == 2
         assert pts.shape[1] == 3
@@ -1115,13 +913,26 @@ class EvaluatorTex(object):
         pts = torch.from_numpy(pts).unsqueeze(0).to(self.device)
         pts_proj = torch.from_numpy(pts_proj).unsqueeze(0).to(self.device)
 
+        #import pdb; pdb.set_trace()
+        pts_list = []
+        pts_proj_list = []
+        for i in range(img.size(1)):
+            view_diff = view_id[:, i] - view_id[:, 0]
+            pts_ = self.rotate_points(pts, view_diff)
+            pts_proj_ = self.project_points(pts_,const.cam_f, const.cam_c, const.cam_tz)
+            pts_list.append(pts_.unsqueeze(1))
+            pts_proj_list.append(pts_proj_.unsqueeze(1))
 
-        pts_group_num = (pts.size()[1] + group_size - 1) // group_size
+        pts = torch.cat(pts_list, 1)
+        pts_proj = torch.cat(pts_proj_list, 1)
+        ##
+
+        pts_group_num = (pts.size()[2] + group_size - 1) // group_size
         pts_ov = []
         for gi in tqdm(range(pts_group_num), desc='SDF query'):
             # print('Testing point group: %d/%d' % (gi + 1, pts_group_num))
-            pts_group = pts[:,  (gi * group_size):((gi + 1) * group_size), :]
-            pts_proj_group = pts_proj[:, (gi * group_size):((gi + 1) * group_size), :]
+            pts_group = pts[:, :, (gi * group_size):((gi + 1) * group_size), :]
+            pts_proj_group = pts_proj[:, :, (gi * group_size):((gi + 1) * group_size), :]
             outputs = self.forward_infer_occupancy_value(
                 img, pts_group, pts_proj_group, vol)
             pts_ov.append(np.squeeze(outputs.detach().cpu().numpy()))

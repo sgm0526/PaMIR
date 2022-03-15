@@ -12,7 +12,7 @@ from .saver import CheckpointSaver
 from .util import configure_logging
 
 from torch.utils.data import DataLoader
-from evaluator_tex import EvaluatorTex
+from evaluator_tex_multi import EvaluatorTex
 
 from torchvision.utils import save_image
 
@@ -122,11 +122,11 @@ class BaseTrainer(object):
                             nerf_color_pred, nerf_color_warped = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
                                                                     batch_val['pose'], batch_val['scale'],
                                                                     batch_val['trans'],
-                                                                    batch_val['view_id'] - batch_val['target_view_id'])
+                                                                    batch_val['view_id'] ,batch_val['target_view_id'])
                             nerf_color_pred_list.append(nerf_color_pred)
                             nerf_color_wapred_list.append(nerf_color_warped )
                             target_image_list.append(batch_val['target_img'])
-                            source_image_list.append(batch_val['img'])
+                            source_image_list.append(batch_val['img'].reshape(-1, 3, batch_val['img'].size(3), batch_val['img'].size(3)))
 
                         nerf_color_pred= torch.cat(nerf_color_pred_list, dim=0)
                         nerf_color_warped = torch.cat(nerf_color_wapred_list, dim=0)
