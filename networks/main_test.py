@@ -9,7 +9,8 @@ from util import util
 from util import obj_io
 from torch.nn import functional as F
 from Pytorch_metrics import metrics
-from TrainingDataPreparation import
+from TrainingDataPreparation.main_render_final import render_mesh
+from TrainingDataPreparation.ObjIO import load_obj_data
 
 
 def main_test_with_gt_smpl(test_img_dir, out_dir, pretrained_checkpoint, pretrained_gcmr_checkpoint):
@@ -1154,21 +1155,29 @@ def validation_texture(pretrained_checkpoint_pamir,
 
 
 
-    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_texturedgtmesh__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
+    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation1_texturedgtmesh__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
     os.makedirs(out_dir, exist_ok=True)
-
+    psnr_list = []
+    ssim_list = []
+    lpips_list = []
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
         model_id = (str(501 + batch['model_id'].item()).zfill(4) + '_' + str(batch['view_id'].item()).zfill(4))
+        print(model_id)
         model_number = str(501 + batch['model_id'].item()).zfill(4)
-        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data/{model_number}/{model_number}.obj'
-        tgt_mesh = trimesh.load(tgt_meshname)
+        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data_vc/{model_number}/{model_number}.obj'
 
-        mesh_v = tgt_mesh.vertices.astype(np.float32)
+
+        #tgt_mesh = trimesh.load(tgt_meshname)
+        tgt_mesh = load_obj_data(tgt_meshname)
+
+        #mesh_v = tgt_mesh.vertices.astype(np.float32)
+        mesh_v = tgt_mesh['v'].astype(np.float32)
         mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
 
-        mesh_f = tgt_mesh.faces.astype(np.int32)
+        #mesh_f = tgt_mesh.faces.astype(np.int32)
+        mesh_f = tgt_mesh['f'].astype(np.int32)
         mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
 
         v_cam = evaluater.rotate_points(mesh_v, batch['view_id'])
@@ -1182,47 +1191,53 @@ def validation_texture(pretrained_checkpoint_pamir,
                               'vc': mesh_color.squeeze()},
                              mesh_fname)
 
+
+
         ## render using vertex color
+        rendered_img = render_mesh(mesh_fname, render_angle=batch['view_id'].item()+180 )
+        rendered_img = torch.from_numpy(rendered_img).permute(2,0,1).unsqueeze(0 )
+        # save_image
+        image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
+        save_image(rendered_img, image_fname)
 
-        if False:
-            targetview=180
-            out_dir = f'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_render{targetview}__pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_02_25_01_56_52/'
-            os.makedirs(out_dir, exist_ok=True)
-            surface_render_pred, surface_render_alpha= evaluater.test_surface_rendering(batch['img'], batch['betas'], batch['pose'], batch['scale'], batch['trans'],
-                                                              torch.ones(batch['img'].shape[0]).cuda() * targetview)
-
-            volume_render_pred, volume_render_alpha = evaluater.test_nerf_target(batch['img'], batch['betas'],
-                                                                                         batch['pose'], batch['scale'],
-                                                                                         batch['trans'],
-                                                                                         torch.ones(batch['img'].shape[
-                                                                                                        0]).cuda() *targetview)
-
-            psnr=  metrics.PSNR()(surface_render_alpha.cuda(), batch['target_img'])
-            ssim = metrics.SSIM()(surface_render_alpha.cuda(), batch['target_img'])
-            lpips = metrics.LPIPS(True)(surface_render_alpha.cuda(), batch['target_img'])
-            psnr_list.append(psnr.item())
-            ssim_list.append(ssim.item())
-            lpips_list.append(lpips.item())
+        gt_img= render_mesh(tgt_mesh, render_angle=batch['view_id'].item()+180 )
+        gt_img = torch.from_numpy(gt_img).permute(2, 0, 1).unsqueeze(0)
+        image_fname = os.path.join(out_dir, model_id + '_rendered_gt_image.png')
+        save_image(gt_img, image_fname)
 
 
-            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-                f.write("model id: %s \n" % model_id)
-            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-                f.write("psnr: %f \n" % psnr)
-            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-                f.write("ssim : %f \n" % ssim )
-            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-                f.write("lpips : %f \n" % lpips )
+        ## measure metrics
+        psnr = metrics.PSNR()(rendered_img .cuda(), gt_img.cuda())
+        ssim = metrics.SSIM()(rendered_img .cuda(), gt_img.cuda())
+        lpips = metrics.LPIPS(True)(rendered_img.cuda(), gt_img.cuda())
+        psnr_list.append(psnr.item())
+        ssim_list.append(ssim.item())
+        lpips_list.append(lpips.item())
 
-            image_fname = os.path.join(out_dir, model_id + '_surface_rendered_image.png')
-            save_image(surface_render_alpha, image_fname)
-            image_fname = os.path.join(out_dir, model_id + '_volume_rendered_image.png')
-            save_image(volume_render_alpha, image_fname)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("model id: %s \n" % model_id)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("psnr: %f \n" % psnr)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("ssim : %f \n" % ssim)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("lpips : %f \n" % lpips)
 
-        print(model_id)
+
+        ## meshlab/blender capture
+        if True:
+            check = 1
 
 
-
+    print('psnr mean:', np.mean(psnr_list))
+    print('ssim mean:', np.mean(ssim_list))
+    print('lpips mean:', np.mean(lpips_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("'psnr mean: %f \n" % np.mean(psnr_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("ssim mean: %f \n" % np.mean(ssim_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("lpips mean: %f \n" % np.mean(lpips_list))
 
 
 if __name__ == '__main__':
@@ -1271,10 +1286,4 @@ if __name__ == '__main__':
     #                   output_dir,
     #                   pretrained_checkpoint_pamir= geometry_model_dir ,
     #                   pretrained_checkpoint_pamirtex=texture_model_dir)
-
-    #main_test_flow_feature(
-    #   '/home/nas1_temp/dataset/Thuman/output_stage1/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_val_GCMR',
-    #   pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
-    #   pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0222_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/0223_checkpoint.pt')
-    #
 

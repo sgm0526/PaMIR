@@ -124,7 +124,7 @@ class SmplVtx(object):
     with mean shape
     """
     def __init__(self):
-        self.smpl_vtx_std = np.loadtxt('vertices.txt')
+        self.smpl_vtx_std = np.loadtxt('TrainingDataPreparation/vertices.txt')
         min_x = np.min(self.smpl_vtx_std[:, 0])
         max_x = np.max(self.smpl_vtx_std[:, 0])
         min_y = np.min(self.smpl_vtx_std[:, 1])
@@ -152,10 +152,11 @@ def sample_bg_img(bg_list, bg_root, w=256, h=256):
     n = len(bg_list)
     i = np.random.randint(0, n, 1, dtype=np.int32)
     img_dir = os.path.join(bg_root, bg_list[i[0]])
-    img = cv.imread(img_dir)
+    # img = cv.imread(img_dir)
+    img = None
     if img is None:
-        return np.ones((h, w, 3), np.float32), 'none'
-
+        # return np.ones((h, w, 3), np.float32), 'none'
+        return np.zeros((h, w, 3), np.float32), 'none'
     # convert color
     if len(img.shape) == 2 or (len(img.shape) == 3 and img.shape[2] == 1):
         img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
@@ -191,7 +192,7 @@ def sample_verticle_lighting(light_num=3):
     return light_pos, light_color
 
 
-def calc_transform_params(mesh, smpl, hb_ratio=1.0, scale_noise=0):
+def calc_transform_params(mesh, hb_ratio=1.0, scale_noise=0):
     """
     Calculates the transformation params used to transform the mesh to unit
     bounding box centered at the origin. Returns translation and scale.
@@ -205,13 +206,6 @@ def calc_transform_params(mesh, smpl, hb_ratio=1.0, scale_noise=0):
     min_z = np.min(mesh['v'][:, 2])
     max_z = np.max(mesh['v'][:, 2])
 
-    min_x = min(np.min(smpl['v'][:, 0]), min_x)
-    max_x = max(np.max(smpl['v'][:, 0]), max_x)
-    min_y = min(np.min(smpl['v'][:, 1]), min_y)
-    max_y = max(np.max(smpl['v'][:, 1]), max_y)
-    min_z = min(np.min(smpl['v'][:, 2]), min_z)
-    max_z = max(np.max(smpl['v'][:, 2]), max_z)
-
     trans = -np.array([(min_x + max_x) / 2, (min_y + max_y) / 2,
                        (min_z + max_z) / 2])
 
@@ -223,6 +217,7 @@ def calc_transform_params(mesh, smpl, hb_ratio=1.0, scale_noise=0):
     return trans, scale
 
 
+# mesh pre-processing
 # mesh pre-processing
 # =====================================================
 def calc_normal(mesh):

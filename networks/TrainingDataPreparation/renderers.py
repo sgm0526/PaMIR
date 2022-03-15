@@ -34,10 +34,10 @@ import chumpy as ch
 import cv2 as cv
 
 from opendr.lighting import LambertianPointLight, SphericalHarmonics
-from MyRenderer import ColoredRenderer
-from MyCamera import ProjectPointsOrthogonal
+from .MyRenderer import ColoredRenderer
+from .MyCamera import ProjectPointsOrthogonal
 
-import util
+from . import util
 
 
 def _project_vertices(v, w, h, cam_r, cam_t):
@@ -103,25 +103,27 @@ def _render_mask(w, h, v, f, u):
     return rn.r
 
 
-def render_training_pairs(mesh, smpl, img_w, img_h, camera_r, camera_t, color_bg,
+def render_training_pairs(mesh, img_w, img_h, camera_r, camera_t, color_bg,
                           sh_comps=None, light_c=ch.ones(3),
                           vlight_pos=None, vlight_color=None):
     """generates training image pairs
     Will generate color image, mask, semantic map, normal map
     """
-    v_, v_smpl_ = mesh['v'], smpl['v']
+    v_ = mesh['v']
 
     # render color image
     # To avoid aliasing, I render the image with 2x resolution and then resize it
     # See: https://stackoverflow.com/questions/22069167/opencv-how-to-smoothen-boundary
     u = _project_vertices(v_, img_w*2, img_h*2, camera_r, camera_t)
     color_bg = cv.resize(color_bg, (img_w*2, img_h*2))
-    img = _render_color_model_with_lighting(img_w*2, img_h*2, v_, mesh['vn'],
-                                            mesh['vc'], mesh['f'], u,
-                                            sh_comps=sh_comps, light_c=light_c,
-                                            vlight_pos=vlight_pos,
-                                            vlight_color=vlight_color,
-                                            bg_img=color_bg)
+    # img = _render_color_model_with_lighting(img_w*2, img_h*2, v_, mesh['vn'],
+    #                                         mesh['vc'], mesh['f'], u,
+    #                                         sh_comps=sh_comps, light_c=light_c,
+    #                                         vlight_pos=vlight_pos,
+    #                                         vlight_color=vlight_color,
+    #                                         bg_img=color_bg)
+    img = _render_color_model_without_lighting(img_w*2, img_h*2, v_,
+                                            mesh['vc'], mesh['f'], u, bg_img=color_bg)
     img = cv.resize(img, (img_w, img_h))
     img = np.float32(np.copy(img))
 
@@ -140,11 +142,4 @@ def render_training_pairs(mesh, smpl, img_w, img_h, camera_r, camera_t, color_bg
                                                u, bg_img=None)
     nml = np.float32(np.copy(nml))
 
-    # render semantic map
-    u = _project_vertices(v_smpl_, img_w, img_h, camera_r, camera_t)
-    vc_smpl = util.get_smpl_semantic_code()
-    smap = _render_color_model_without_lighting(img_w, img_h, v_smpl_, vc_smpl,
-                                                smpl['f'], u, bg_img=None)
-    smap = np.float32(np.copy(smap))
-
-    return img, msk, nml, smap
+    return img, msk, nml

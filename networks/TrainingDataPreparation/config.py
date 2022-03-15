@@ -32,16 +32,18 @@ import numpy as np
 import math
 
 # directories
-dataset_dir = './dataset'
-output_dir = './synthetic_dataset_final'
-bg_dir = './bg_img'       # background image directory
+dataset_dir = '/home/nas1_temp/dataset/Deephuman_norot/mesh_data'
+# output_dir = '/home/nas1_temp/dataset/Deephuman_norot_no/image_data'
+output_dir = './test'
+bg_dir = 'TrainingDataPreparation/bg_img'       # background image directory
 
 # axes along which flipping is applied
-axis_transformation = np.array([1, -1, -1])     # which axis(axes) to flip
+# axis_transformation = np.array([1, 1, 1])
+axis_transformation = np.array([1, 1, 1]) # which axis(axes) to flip
 
 # output image resolution
-render_img_w = 384
-render_img_h = 384
+render_img_w = 512
+render_img_h = 512
 
 # size of cornor cone added to the bouding box corners
 corner_size = 0.01
