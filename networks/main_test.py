@@ -624,7 +624,9 @@ def validation(pretrained_checkpoint_pamir,
     ssim_list = []
     lpips_list = []
 
-    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask50_gttrans__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
+    #out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask50_gttrans__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
+    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__' + '_'.join(
+        [pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
     os.makedirs(out_dir, exist_ok=True)
 
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
@@ -680,7 +682,7 @@ def validation(pretrained_checkpoint_pamir,
             continue
 
 
-        use_gcmr=True
+        use_gcmr=False
         if use_gcmr :
             out_dir_smpl = os.path.join(out_dir, 'smpl_optm')
             os.makedirs(out_dir_smpl, exist_ok=True)
@@ -988,6 +990,9 @@ def validation_texture(pretrained_checkpoint_pamir,
         v_cam = evaluater.rotate_points(mesh_v, batch['view_id'])
 
         mesh_color = evaluater.test_tex_pifu(batch['img'], v_cam, batch['betas'],batch['pose'], batch['scale'],batch['trans'])
+
+
+
         mesh_fname = os.path.join(out_dir, model_id + '_gt_textured.obj')
 
         obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
@@ -1015,6 +1020,8 @@ def validation_texture(pretrained_checkpoint_pamir,
         else:
             gt_img= render_mesh(tgt_meshname, render_angle=target_viewid  )
             gt_img = torch.from_numpy(gt_img).permute(2, 0, 1).unsqueeze(0)
+
+
 
 
         image_fname = os.path.join(out_dir, model_id + '_rendered_gt_image.png')
@@ -1409,6 +1416,144 @@ def validation_multi(pretrained_checkpoint_pamir,
         f.write("lpips mean: %f \n" % np.mean(lpips_list))
 
 
+def validation_texture_multi(pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex):
+
+
+    device = torch.device("cuda")
+    evaluater = EvaluatorTex_multi(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+
+    val_ds = TrainingImgDataset_multi(
+        '/home/nas1_temp/dataset/Thuman', img_h=const.img_res, img_w=const.img_res,
+        training=False, testing_res=256,
+        view_num_per_item=360,
+        point_num=5000,
+        load_pts2smpl_idx_wgt=True,
+        smpl_data_folder='./data')
+
+    val_data_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8,
+                                 worker_init_fn=None, drop_last=False)
+
+
+
+    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_texturedgtmesh__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
+    os.makedirs(out_dir, exist_ok=True)
+    stage1_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask50_gttrans__pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_03_06_05_54_57'
+    stage2_dir = stage1_dir + '/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_200'
+
+    psnr_list = []
+    ssim_list = []
+    lpips_list = []
+    for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+
+        model_id = (str(501 + batch['model_id'].item()).zfill(4) + '_' + str(batch['view_id'][:,0].item()).zfill(4))
+        print(model_id)
+        model_number = str(501 + batch['model_id'].item()).zfill(4)
+        tgt_meshname = f'/home/nas1_temp/dataset/Thuman/mesh_data_vc/{model_number}/{model_number}.obj'
+
+
+        tgt_mesh = trimesh.load(tgt_meshname)
+
+
+        mesh_v = tgt_mesh.vertices.astype(np.float32)
+        mesh_v = torch.from_numpy(mesh_v).cuda().unsqueeze(0)
+
+        mesh_f = tgt_mesh.faces.astype(np.int32)
+        mesh_f = torch.from_numpy(mesh_f).cuda().unsqueeze(0)
+
+        v_cam = evaluater.rotate_points(mesh_v, batch['view_id'][:,0])
+
+
+        ###
+        view_id1 = str(batch['view_id'][:, 0].item()).zfill(4)
+        view_id2 = str(batch['view_id'][:, 1].item()).zfill(4)
+
+        img_fpath1 = stage2_dir + f'/{model_number}/{view_id1}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}.png'
+        img1 = cv.imread(img_fpath1).astype(np.uint8)
+        img1 = np.float32(cv.cvtColor(img1, cv.COLOR_RGB2BGR)) / 255.
+        img1 = torch.from_numpy(img1.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        img_fpath2 = stage2_dir + f'/{model_number}/{view_id1}_{view_id2}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
+        img2 = cv.imread(img_fpath2).astype(np.uint8)
+        img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
+        img2 = torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        img_pair = torch.stack([img1, img2], 1)
+        ###
+
+
+        mesh_color = evaluater.test_tex_pifu(img_pair, batch['view_id'], v_cam, batch['betas'],batch['pose'], batch['scale'],batch['trans'])
+
+
+
+        mesh_fname = os.path.join(out_dir, model_id + '_gt_textured.obj')
+
+        obj_io.save_obj_data({'v': mesh_v[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh_f[0].squeeze().detach().cpu().numpy(),
+                              'vc': mesh_color.squeeze()},
+                             mesh_fname)
+
+
+        ## render using vertex color
+        target_viewid = -(batch['view_id'][:,0].item()+180)
+        rendered_img = render_mesh(mesh_fname, render_angle=target_viewid )
+        rendered_img = torch.from_numpy(rendered_img).permute(2,0,1).unsqueeze(0 )
+        # save_image
+        image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
+        save_image(rendered_img, image_fname)
+
+        ##
+        if True:
+
+            target_viewid =str((batch['view_id'][:,0].item()+180)%360).zfill(4)
+            tgt_imagename = f'/home/nas1_temp/dataset/Thuman/image_data_vc/{model_number}/color/{target_viewid}.jpg'
+            gt_img = cv.imread(tgt_imagename).astype(np.uint8)
+            gt_img = np.float32(cv.cvtColor( gt_img , cv.COLOR_RGB2BGR)) / 255.
+            gt_img= torch.from_numpy( gt_img .transpose((2, 0, 1))).unsqueeze(0).cuda()
+        else:
+            gt_img= render_mesh(tgt_meshname, render_angle=target_viewid  )
+            gt_img = torch.from_numpy(gt_img).permute(2, 0, 1).unsqueeze(0)
+
+
+
+
+        image_fname = os.path.join(out_dir, model_id + '_rendered_gt_image.png')
+        save_image(gt_img, image_fname)
+
+
+        ## measure metrics
+        psnr = metrics.PSNR()(rendered_img .cuda(), gt_img.cuda())
+        ssim = metrics.SSIM()(rendered_img .cuda(), gt_img.cuda())
+        lpips = metrics.LPIPS(True)(rendered_img.cuda(), gt_img.cuda())
+        psnr_list.append(psnr.item())
+        ssim_list.append(ssim.item())
+        lpips_list.append(lpips.item())
+
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("model id: %s \n" % model_id)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("psnr: %f \n" % psnr)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("ssim : %f \n" % ssim)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("lpips : %f \n" % lpips)
+
+
+        ## meshlab/blender capture
+        if True:
+            check = 1
+
+
+    print('psnr mean:', np.mean(psnr_list))
+    print('ssim mean:', np.mean(ssim_list))
+    print('lpips mean:', np.mean(lpips_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("'psnr mean: %f \n" % np.mean(psnr_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("ssim mean: %f \n" % np.mean(ssim_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("lpips mean: %f \n" % np.mean(lpips_list))
+
+
 
 if __name__ == '__main__':
     #geometry_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
@@ -1420,13 +1565,13 @@ if __name__ == '__main__':
 
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_03_06_05_54_57.pt'
-    validation_texture(geometry_model_dir, texture_model_dir)
-    #validation(geometry_model_dir, texture_model_dir)
+    #validation_texture(geometry_model_dir, texture_model_dir)
+    validation(geometry_model_dir, texture_model_dir)
     #inference('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir, texture_model_dir)
 
-
-    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0227_24hie0.5_03_occ_2v_alpha/checkpoints/latest.pt'
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_24hie_03_occ_2v_alpha_concat/checkpoints/2022_03_06_01_07_09.pt'
     #validation_multi(geometry_model_dir , texture_model_dir)
     #inference_multi('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir,texture_model_dir)
+    #validation_texture_multi(geometry_model_dir, texture_model_dir)
 
 
