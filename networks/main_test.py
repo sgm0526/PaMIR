@@ -1438,8 +1438,10 @@ def validation_texture_multi(pretrained_checkpoint_pamir,
 
     out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_texturedgtmesh__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
     os.makedirs(out_dir, exist_ok=True)
-    stage1_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gcmroptmask50_gttrans__pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_03_06_05_54_57'
+    stage1_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation_256gtsmpl__pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie_2022_03_06_05_54_57'
     stage2_dir = stage1_dir + '/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_200'
+
+
 
     psnr_list = []
     ssim_list = []
@@ -1566,12 +1568,12 @@ if __name__ == '__main__':
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_03_06_05_54_57.pt'
     #validation_texture(geometry_model_dir, texture_model_dir)
-    validation(geometry_model_dir, texture_model_dir)
+    #validation(geometry_model_dir, texture_model_dir)
     #inference('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir, texture_model_dir)
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_24hie_03_occ_2v_alpha_concat/checkpoints/2022_03_06_01_07_09.pt'
     #validation_multi(geometry_model_dir , texture_model_dir)
     #inference_multi('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir,texture_model_dir)
-    #validation_texture_multi(geometry_model_dir, texture_model_dir)
+    validation_texture_multi(geometry_model_dir, texture_model_dir)
 
 
