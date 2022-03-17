@@ -1024,9 +1024,9 @@ def validation_texture(pretrained_checkpoint_pamir,
         save_image(rendered_img, image_fname)
 
         ##
-        if False:
+        if True:
 
-            target_viewid =str(batch['view_id'].item()+180).zfill(4)
+            target_viewid =str((batch['view_id'].item()+180)%360).zfill(4)
             tgt_imagename = f'/home/nas1_temp/dataset/Thuman/image_data_vc/{model_number}/color/{target_viewid}.jpg'
             gt_img = cv.imread(tgt_imagename).astype(np.uint8)
             gt_img = np.float32(cv.cvtColor( gt_img , cv.COLOR_RGB2BGR)) / 255.
