@@ -962,7 +962,7 @@ def validation_texture(pretrained_checkpoint_pamir,
 
 
 
-    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation1_texturedgtmesh__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
+    out_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/validation2_texturedgtmesh__' + '_'.join([pretrained_checkpoint_pamirtex.split('/')[-3], pretrained_checkpoint_pamirtex.split('/')[-1][:-3]])
     os.makedirs(out_dir, exist_ok=True)
     psnr_list = []
     ssim_list = []
@@ -1054,7 +1054,8 @@ def validation_texture(pretrained_checkpoint_pamir,
 
         rendered_feat = reid_encoder.get_features(rendered_img.cuda())
         gt_target_feat = reid_encoder.get_features(gt_img.cuda())
-        gt_source_feat = reid_encoder.get_features(batch['img'].cuda())
+        gt_source_feat = reid_encoder.get_features(batch['img'].cuda()*batch['mask'].permute(0,3,1,2).cuda())
+
         reid_dist = reid_encoder.euclidean_squared_distance(gt_source_feat[0].unsqueeze(0), torch.cat((gt_target_feat[0][None,], rendered_feat[0][None,]),dim=0))
         reid_list.append(reid_dist)
 
