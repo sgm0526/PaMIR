@@ -23,7 +23,7 @@ import mrcfile
 from torchvision.utils import save_image
 import open3d
 from os import listdir
-
+from OSNet.encoder import OsNetEncoder
 
 from evaluator import Evaluator
 from evaluator_tex_pamir import EvaluatorTex
@@ -967,6 +967,20 @@ def validation_texture(pretrained_checkpoint_pamir,
     psnr_list = []
     ssim_list = []
     lpips_list = []
+    reid_list = []
+
+    reid_encoder = OsNetEncoder(
+        input_width=1,
+        input_height=1,
+        weight_filepath="./OSNet/weights/osnet_ibn_x1_0_imagenet.pth",
+        batch_size=32,
+        num_classes=2022,
+        patch_height=256,
+        patch_width=128,
+        norm_mean=[0.485, 0.456, 0.406],
+        norm_std=[0.229, 0.224, 0.225],
+        GPU=True)
+
     for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
@@ -1029,12 +1043,20 @@ def validation_texture(pretrained_checkpoint_pamir,
 
 
         ## measure metrics
-        psnr = metrics.PSNR()(rendered_img .cuda(), gt_img.cuda())
-        ssim = metrics.SSIM()(rendered_img .cuda(), gt_img.cuda())
+        psnr = metrics.PSNR()(rendered_img.cuda(), gt_img.cuda())
+        ssim = metrics.SSIM()(rendered_img.cuda(), gt_img.cuda())
         lpips = metrics.LPIPS(True)(rendered_img.cuda(), gt_img.cuda())
         psnr_list.append(psnr.item())
         ssim_list.append(ssim.item())
         lpips_list.append(lpips.item())
+
+        ## measure reID
+
+        rendered_feat = reid_encoder.get_features(rendered_img.cuda())
+        gt_target_feat = reid_encoder.get_features(gt_img.cuda())
+        gt_source_feat = reid_encoder.get_features(batch['img'].cuda())
+        reid_dist = reid_encoder.euclidean_squared_distance(gt_source_feat[0].unsqueeze(0), torch.cat((gt_target_feat[0][None,], rendered_feat[0][None,]),dim=0))
+        reid_list.append(reid_dist)
 
         with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
             f.write("model id: %s \n" % model_id)
@@ -1044,6 +1066,8 @@ def validation_texture(pretrained_checkpoint_pamir,
             f.write("ssim : %f \n" % ssim)
         with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
             f.write("lpips : %f \n" % lpips)
+        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+            f.write("reid : %f , reid_gt : %f \n" % (reid_dist[:,1], reid_dist[:,0]))
 
 
         ## meshlab/blender capture
@@ -1054,12 +1078,16 @@ def validation_texture(pretrained_checkpoint_pamir,
     print('psnr mean:', np.mean(psnr_list))
     print('ssim mean:', np.mean(ssim_list))
     print('lpips mean:', np.mean(lpips_list))
+    reid_mean = torch.vstack(reid_list).mean(0)
+
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("'psnr mean: %f \n" % np.mean(psnr_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("ssim mean: %f \n" % np.mean(ssim_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("lpips mean: %f \n" % np.mean(lpips_list))
+    with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+        f.write("reid mean : %f , reid_gt mean : %f \n" % (reid_mean[1].item(), reid_mean[0].item()))
 
 
 def inference_multi(test_img_dir,pretrained_checkpoint_pamir,
@@ -1567,13 +1595,13 @@ if __name__ == '__main__':
 
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie/checkpoints/2022_03_06_05_54_57.pt'
-    #validation_texture(geometry_model_dir, texture_model_dir)
+    validation_texture(geometry_model_dir, texture_model_dir)
     #validation(geometry_model_dir, texture_model_dir)
     #inference('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir, texture_model_dir)
 
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_24hie_03_occ_2v_alpha_concat/checkpoints/2022_03_06_01_07_09.pt'
     #validation_multi(geometry_model_dir , texture_model_dir)
     #inference_multi('/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/test_data_check', geometry_model_dir,texture_model_dir)
-    validation_texture_multi(geometry_model_dir, texture_model_dir)
+    # validation_texture_multi(geometry_model_dir, texture_model_dir)
 
 
