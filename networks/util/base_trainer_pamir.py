@@ -12,7 +12,7 @@ from .saver import CheckpointSaver
 from .util import configure_logging
 
 from torch.utils.data import DataLoader
-from evaluator_tex import EvaluatorTex
+from evaluator_tex_pamir import EvaluatorTex
 
 from torchvision.utils import save_image
 
@@ -102,41 +102,6 @@ class BaseTrainer(object):
                         # self.summary_writer.add_images('nerf_img', pixels_high, self.step_count)
                         # self.summary_writer.add_images('down_nerf_img', pred_img, self.step_count)
 
-                    if self.step_count % (50*self.options.summary_steps) == 0:
-                        evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
-                        #evaluater.pamir_net = self.pamir_net
-                        evaluater.pamir_tex_net = self.pamir_tex_net
-
-                        nerf_color_pred_list =[]
-                        nerf_color_wapred_list=[]
-                        target_image_list=[]
-                        source_image_list=[]
-                        for step_val, batch_val in enumerate(tqdm(val_data_loader, desc='Epoch ' + str(epoch),
-                                                                  total=len(self.val_ds),
-                                                                  initial=0)):
-                            if step_val ==3:
-                                break
-                            batch_val = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in
-                                         batch_val.items()}
-
-                            nerf_color_pred, nerf_color_warped = evaluater.test_nerf_target(batch_val['img'], batch_val['betas'],
-                                                                    batch_val['pose'], batch_val['scale'],
-                                                                    batch_val['trans'],
-                                                                    batch_val['view_id'] - batch_val['target_view_id'])
-                            nerf_color_pred_list.append(nerf_color_pred)
-                            nerf_color_wapred_list.append(nerf_color_warped )
-                            target_image_list.append(batch_val['target_img'])
-                            source_image_list.append(batch_val['img'])
-
-                        nerf_color_pred= torch.cat(nerf_color_pred_list, dim=0)
-                        nerf_color_warped = torch.cat(nerf_color_wapred_list, dim=0)
-                        target_image= torch.cat(target_image_list, dim=0)
-                        source_image= torch.cat(source_image_list, dim=0)
-
-                        self.summary_writer.add_images('nerf_img_pred', nerf_color_pred , self.step_count)
-                        self.summary_writer.add_images('nerf_img_wapred', nerf_color_warped , self.step_count)
-                        self.summary_writer.add_images('target_image', target_image, self.step_count)
-                        self.summary_writer.add_images('source_image', source_image, self.step_count)
 
 
                     if False: #self.step_count % (100*self.options.summary_steps) == 0:
@@ -169,48 +134,6 @@ class BaseTrainer(object):
                         self.summary_writer.add_scalar('val_tex', val_mesh_loss.item(), self.step_count)
                         self.summary_writer.add_scalar('val_nerf_tex', val_nerf_loss.item(), self.step_count)
 
-                    if False: #self.step_count % (100*self.options.summary_steps) == 0:
-                        evaluater = EvaluatorTex(self.device, None, None, no_weight=True)
-                        #evaluater.pamir_net = self.pamir_net
-                        evaluater.pamir_tex_net = self.pamir_tex_net
-
-
-                        val_mesh_loss = 0
-                        val_nerf_loss = 0
-                        for step_val , batch_val in enumerate(tqdm(val_data_loader, desc='Epoch ' + str(epoch),
-                                                          total=len(self.val_ds),
-                                                          initial=0)):
-
-                            batch_val = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k,v in batch_val.items()}
-
-                            pts_occ_in = input_batch['pts_occ_in']  # [:, :-self.options.point_num]
-                            pts_occ_proj_in = input_batch['pts_occ_proj_in']  # [:, :-self.options.point_num]
-                            gt_ov_in = input_batch['pts_ov_in']  # [:, :-self.options.point_num]
-                            pts_occ_out = input_batch['pts_occ_out']  # [:, :-self.options.point_num]
-                            pts_occ_proj_out = input_batch['pts_occ_proj_out']  # [:, :-self.options.point_num]
-                            gt_ov_out = input_batch['pts_ov_out']  # [:, :-self.options.point_num]
-
-
-                            self.pamir_tex_net.eval()
-                            # self.graph_cnn.eval()  # lock BN and dropout
-                            # self.smpl_param_regressor.eval()  # lock BN and dropout
-                            gt_vert_cam = batch_val['scale'] * self.tet_smpl(batch_val['pose'], batch_val['betas']) + batch_val['trans']
-                            vol =  self.voxelization(gt_vert_cam)
-
-
-                            _, _, _, _, output_sdf_in = self.pamir_tex_net.forward(img, vol, pts_occ_in,
-                                                                                   pts_occ_proj_in)
-                            losses['geo_in'] = self.geo_loss(output_sdf_in, gt_ov_in)
-                            _, _, _, _, output_sdf_out = self.pamir_tex_net.forward(img, vol, pts_occ_out,
-                                                                                    pts_occ_proj_out)
-                            losses['geo_out'] = self.geo_loss(output_sdf_out, gt_ov_out)
-
-
-                            #save_image(batch_val['target_img'],f'./debug/{step_val}_1.png')
-                        val_mesh_loss /= len(self.val_ds)
-                        val_nerf_loss /= len(self.val_ds)
-                        self.summary_writer.add_scalar('val_tex', val_mesh_loss.item(), self.step_count)
-                        self.summary_writer.add_scalar('val_nerf_tex', val_nerf_loss.item(), self.step_count)
                     # Backup the current training stage
                     if self.step_count % (self.options.summary_steps*10) == 0:
                         self.saver.save_latest(

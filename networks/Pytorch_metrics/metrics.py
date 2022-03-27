@@ -515,7 +515,7 @@ class LPIPS(object):
     def __init__(self, cuda, des="Learned Perceptual Image Patch Similarity", version="0.1"):
         self.des = des
         self.version = version
-        self.model = lpips.PerceptualLoss(model='net-lin',net='alex',use_gpu=cuda)
+        self.model = lpips.PerceptualLoss(model='net-lin',net='vgg',use_gpu=cuda)
 
     def __repr__(self):
         return "LPIPS"

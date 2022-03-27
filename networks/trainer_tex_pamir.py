@@ -17,7 +17,7 @@ import glob
 import logging
 import math
 
-from util.base_trainer import BaseTrainer
+from util.base_trainer_pamir import BaseTrainer
 from dataloader.dataloader_tex import TrainingImgDataset
 from network.arch import PamirNet, TexPamirNetAttention
 from neural_voxelization_layer.smpl_model import TetraSMPL
