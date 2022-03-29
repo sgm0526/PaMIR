@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=6
-NAME='pamir_nerf_03266_48_03_rayontarget_rayonpts_occ_attloss_inout_24hie'
+GPU_ID=2
+NAME='0328_2_tt_nerf_24hie_03_rayontarget_attloss_occinout'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
@@ -10,15 +10,14 @@ PRETRAINED_PAMIR_NET_CHECKPOINT='./results/pamir_geometry/checkpoints/latest.pt'
 LR=2e-4
 BATCH_SIZE=3
 LOG_DIR='./results'
-DATASET_DIR='/home/nas1_temp/dataset/Thuman'
+DATASET_DIR='/home/nas1_temp/dataset/tt_dataset'
 VIEW_NUM_PER_ITEM=360
 POINT_NUM=5000
-NUM_EPOCHS=200
+NUM_EPOCHS=100
 SUMMARY_STEPS=20
 CHECKPOINTS_STEPS=20000
 TEST_STEPS=5000
 NUM_WORKERS=8
-
 
 CUDA_VISIBLE_DEVICES=${GPU_ID} OMP_NUM_TRHEAD=1 python main_train_tex.py \
 --name ${NAME} \

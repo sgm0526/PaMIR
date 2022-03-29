@@ -78,8 +78,8 @@ class BaseTrainer(object):
                                                      shuffle=self.options.shuffle_train,
                                                      worker_init_fn=worker_init_fn)
 
-            val_data_loader = DataLoader(self.val_ds,batch_size=1, shuffle=False, num_workers=self.options.num_workers,
-                worker_init_fn=worker_init_fn, drop_last=False)
+            #val_data_loader = DataLoader(self.val_ds,batch_size=1, shuffle=False, num_workers=self.options.num_workers,
+            #    worker_init_fn=worker_init_fn, drop_last=False)
 
 
 

@@ -231,10 +231,10 @@ class TrainingImgDataset(Dataset):
         return return_dict
 
     def load_image(self, data_item, view_id):
-        # img_fpath = os.path.join(
-        #     self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color/%04d.jpg' % view_id)
         img_fpath = os.path.join(
-            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data','image_data_nolight2'), data_item, 'color_re/%04d.jpg' % view_id)
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color/%04d.jpg' % view_id)
+        #img_fpath = os.path.join(
+        #    self.dataset_dir, constant.dataset_image_subfolder.replace('image_data','image_data_nolight2'), data_item, 'color_re/%04d.jpg' % view_id)
         msk_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'mask/%04d.png' % view_id)
         try:
@@ -279,11 +279,11 @@ class TrainingImgDataset(Dataset):
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'meta/uv_mask.png')
         uvnml_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'meta/uv_nml.png')
-        #uvclr_fpath = os.path.join(
-        #    self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id)
         uvclr_fpath = os.path.join(
-            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight2'), data_item,
-            'color_uv_re/%04d.png' % view_id)
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id)
+        ##uvclr_fpath = os.path.join(
+        #    self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight2'), data_item,
+        #    'color_uv_re/%04d.png' % view_id)
         try:
             uv_mask = cv.imread(uvmsk_fpath)
             uv_mask = uv_mask[:, :, 0] != 0
@@ -587,10 +587,10 @@ class AllImgDataset(Dataset):
         return return_dict
 
     def load_image(self, data_item, view_id):
-        # img_fpath = os.path.join(
-        #     self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color/%04d.jpg' % view_id)
         img_fpath = os.path.join(
-            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data','image_data_nolight2'), data_item, 'color_re/%04d.jpg' % view_id)
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color/%04d.jpg' % view_id)
+        #img_fpath = os.path.join(
+        #    self.dataset_dir, constant.dataset_image_subfolder.replace('image_data','image_data_nolight2'), data_item, 'color_re/%04d.jpg' % view_id)
         msk_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'mask/%04d.png' % view_id)
         try:
@@ -636,11 +636,11 @@ class AllImgDataset(Dataset):
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'meta/uv_mask.png')
         uvnml_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'meta/uv_nml.png')
-        #uvclr_fpath = os.path.join(
-        #    self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id)
         uvclr_fpath = os.path.join(
-            self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight2'), data_item,
-            'color_uv_re/%04d.png' % view_id)
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id)
+        #uvclr_fpath = os.path.join(
+        #    self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight2'), data_item,
+        #    'color_uv_re/%04d.png' % view_id)
         try:
             uv_mask = cv.imread(uvmsk_fpath)
             uv_mask = uv_mask[:, :, 0] != 0

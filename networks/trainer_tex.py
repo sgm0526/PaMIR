@@ -274,7 +274,7 @@ class Trainer(BaseTrainer):
         points_cam[:, :, :, 2] += cam_tz
 
         points_cam_source = self.rotate_points(points_cam, view_diff)
-        if False:
+        if True:
             # import pdb; pdb.set_trace()
             ###
             num_ray = 1000
@@ -287,7 +287,7 @@ class Trainer(BaseTrainer):
 
 
 
-        if True:
+        if False:
             # import pdb; pdb.set_trace()
             ray_index = np.random.randint(0, pts_num, 1000)
             pts_world =input_batch['pts_world'][:, ray_index]
