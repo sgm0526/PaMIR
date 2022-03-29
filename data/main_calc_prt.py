@@ -7,7 +7,7 @@ import tqdm
 import objio
 import prt.prt_util as prt_util
 
-mesh_dir = '../dataset_example/mesh_data'
+mesh_dir = '/home/nas1_temp/dataset/Twindom/mesh_data'
 
 
 def get_data_list():
@@ -31,7 +31,7 @@ def process_one_data_item(data_item):
     print('Processed ' + item_name)
 
 
-def main(worker_num=4):
+def main(worker_num=8):
     os.makedirs(mesh_dir, exist_ok=True)
 
     data_list = get_data_list()

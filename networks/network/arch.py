@@ -621,7 +621,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         if return_flow_feature:
-            return torch.cat([grid_2d.squeeze(-2), pt_tex_pred], dim=-1), torch.cat([feature.permute(0,2,1,3).squeeze(-1), pt_tex_att],dim=-1), pt_tex_att, None, pt_tex_sigma
+            return torch.cat([grid_2d.squeeze(-2), pt_tex_pred], dim=-1), None, pt_tex_att, None, pt_tex_sigma
 
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
 

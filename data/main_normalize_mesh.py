@@ -8,7 +8,7 @@ import trimesh
 import objio
 import prt.prt_util as prt_util
 
-mesh_dir = '../dataset_example/mesh_data'
+mesh_dir = '/home/nas1_temp/dataset/Twindom/0006_test'
 
 
 def get_data_list():
@@ -47,21 +47,21 @@ def main(worker_num=4):
     data_list = get_data_list()
     print('Found %d data items' % len(data_list))
     pool = multiprocessing.Pool(processes=worker_num)
-    try:
-        r = [pool.apply_async(process_one_data_item, args=(data_item,))
-             for data_item in data_list]
-        pool.close()
-        for item in r:
-            item.wait(timeout=9999999)
-    except KeyboardInterrupt:
-        pool.terminate()
-    finally:
-        pool.join()
-        print('Done. ')
-    # for data_item in tqdm.tqdm(data_list, ascii=True):
-    #     process_one_data_item(data_item)
-    #     import pdb
-    #     pdb.set_trace()
+    # try:
+    #     r = [pool.apply_async(process_one_data_item, args=(data_item,))
+    #          for data_item in data_list]
+    #     pool.close()
+    #     for item in r:
+    #         item.wait(timeout=9999999)
+    # except KeyboardInterrupt:
+    #     pool.terminate()
+    # finally:
+    #     pool.join()
+    #     print('Done. ')
+    for data_item in tqdm.tqdm(data_list, ascii=True):
+        process_one_data_item(data_item)
+        import pdb
+        pdb.set_trace()
     print('Done')
 
 

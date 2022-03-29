@@ -668,18 +668,19 @@ class AllImgDataset(Dataset):
 
 
         self.data_list_all = load_data_list(dataset_dir, 'data_list_all.txt')
-        self.data_list = self.data_list_all[501:]
+        # self.data_list = self.data_list_all[501:]
         # self.data_list = self.data_list_all[260:]
         # self.data_list = self.data_list_all[:260]
-        #self.data_list = self.data_list_all
+        self.data_list = self.data_list_all
         print(self.data_list)
         self.source_view_list = list(range(0, 360, 18))
-        self.target_view_diff = [0, 90, 180, 270]
+        self.target_view_diff = [180]
         self.len = len(self.data_list) * len(self.target_view_diff) * len(self.source_view_list)
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
-        self.J_dirs = jmdata['J_dirs'].cuda()
+        # self.J_dirs = jmdata['J_dirs'].cuda()
+        self.J_dirs = jmdata['J_dirs']
         self.J_template = jmdata['J_template']
 
         # some default parameters for testing
@@ -691,7 +692,8 @@ class AllImgDataset(Dataset):
         return self.len
 
     def __getitem__(self, item):
-        data_list = self.data_list_all
+        # data_list = self.data_list_all
+        data_list = self.data_list
 
 
         # if self.training:
@@ -702,8 +704,8 @@ class AllImgDataset(Dataset):
         #     view_id = self.model_2_viewindex[model_id]
 
 
-        model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 501
-        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 501
+        model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
         view_id = self.source_view_list[(item % (len(self.target_view_diff) * len(self.source_view_list))) // len(self.target_view_diff)]
         target_view_id_ind = (item % (len(self.target_view_diff) * len(self.source_view_list))) % len(self.target_view_diff)
         target_view_id = self.target_view_diff[target_view_id_ind]

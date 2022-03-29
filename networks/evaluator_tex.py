@@ -147,7 +147,7 @@ class EvaluatorTex(object):
 
 
 
-        num_ray= 5000
+        num_ray= 20000
         img_size = int(img_size / const.down_scale)
         pts_group_num = (img_size * img_size + num_ray - 1) //num_ray
         pts_clr_pred = []
@@ -201,39 +201,43 @@ class EvaluatorTex(object):
                         [nerf_output_clr_.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr_.size(-1)),
                          nerf_output_clr_fine_.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr_.size(-1))], dim=2), 2,
                                                     indices.expand(-1, -1, -1, nerf_output_clr_fine_.size(-1)))
-                    nerf_output_clr = torch.gather(torch.cat(
-                        [nerf_output_clr.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr.size(-1)),
-                         nerf_output_clr_fine.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr.size(-1))], dim=2), 2,
-                                                   indices.expand(-1, -1, -1, nerf_output_clr.size(-1)))
+                    if not return_flow_feature:
+                        nerf_output_clr = torch.gather(torch.cat(
+                            [nerf_output_clr.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr.size(-1)),
+                             nerf_output_clr_fine.reshape(batch_size, num_ray_part, num_steps, nerf_output_clr.size(-1))], dim=2), 2,
+                                                       indices.expand(-1, -1, -1, nerf_output_clr.size(-1)))
                     nerf_output_sigma = torch.gather(torch.cat(
                         [nerf_output_sigma.reshape(batch_size, num_ray_part, num_steps, 1),
                          nerf_output_sigma_fine.reshape(batch_size, num_ray_part, num_steps, 1)], dim=2), 2, indices)
                     sampled_z_vals =torch.gather(all_z_vals, 2, indices)
 
                 all_outputs = torch.cat([nerf_output_clr_, nerf_output_sigma], dim=-1)
-                pixels_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature, weight_refine=return_flow_feature)
+                pixels_pred, _, final_weights = fancy_integration2(all_outputs, sampled_z_vals, device=self.device, white_back=not return_flow_feature, weight_refine=return_flow_feature)
 
-                all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
-                feature_pred, _, final_weights = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
-                                                        white_back=not return_flow_feature, weight_refine=return_flow_feature)
+                if not return_flow_feature:
+                    all_outputs = torch.cat([nerf_output_clr, nerf_output_sigma], dim=-1)
+                    feature_pred, _, _ = fancy_integration2(all_outputs, sampled_z_vals, device=self.device,
+                                                            white_back=not return_flow_feature, weight_refine=return_flow_feature)
 
             pts_clr_pred.append(pixels_pred.detach().cpu())
-            pts_clr_warped.append(feature_pred.detach().cpu())
+            if not return_flow_feature:
+                pts_clr_warped.append(feature_pred.detach().cpu())
             pts_final_weights.append(final_weights.detach().cpu())
             #pts_clr_pred.append(pixels_pred)
             #pts_clr_warped.append(pixels_warped)
         ##
         pts_clr_pred= torch.cat(pts_clr_pred, dim=1)
         pts_clr_pred = pts_clr_pred.permute(0,2,1).reshape(batch_size, pts_clr_pred.size(2), img_size,img_size)
-        pts_clr_warped= torch.cat(pts_clr_warped, dim=1)
-        pts_clr_warped= pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
+        if not return_flow_feature:
+            pts_clr_warped= torch.cat(pts_clr_warped, dim=1)
+            pts_clr_warped= pts_clr_warped.permute(0, 2, 1).reshape(batch_size, pts_clr_warped.size(2), img_size, img_size)
         pts_final_weights = torch.cat(pts_final_weights, dim=1)
         pts_final_weights = pts_final_weights.sum(dim=2).permute(0,2,1).reshape(batch_size, 1, img_size, img_size)
         # pts_clr = pts_clr.permute(2,0,1
         if return_cam_loc:
             return pts_clr, self.rotate_points(cam_t.unsqueeze(0), view_diff)
         if return_flow_feature:
-            return pts_clr_pred, pts_clr_warped, pts_final_weights
+            return pts_clr_pred, pts_final_weights
         return pts_clr_pred, pts_clr_warped
     def run_Secant_method(self, img, vol, f_low, f_high, z_low, z_high,n_secant_steps, sampled_rays_d_world, view_diff, threshold):
 
