@@ -1544,12 +1544,13 @@ def validation_multi(pretrained_checkpoint_pamir,
     for step_val, batch in enumerate(tqdm(val_data_loader_multi, desc='Testing', total=len(val_data_loader_multi), initial=0)):
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        model_num = val_ds.data_list[step_val // 4]
+        model_num = val_ds_multi.data_list[step_val // 4]
         model_id = model_num.zfill(4) + '_' + str(batch['view_id'][:,0].item()).zfill(4)
         print(model_id)
 
         view_id1 = str(batch['view_id'][:, 0].item()).zfill(4)
         view_id2 = str(batch['view_id'][:, 1].item()).zfill(4)
+
 
         img_fpath1 = stage2_dir+  f'/{model_num}/{view_id1}.png'#f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}.png'
         img1 = cv.imread(img_fpath1).astype(np.uint8)
@@ -1663,7 +1664,7 @@ def validation_multi(pretrained_checkpoint_pamir,
         #measure dist
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
 
-        tgt_meshname = os.path.join(tgt_mesh_dir, f'/{model_num}/{model_num}.obj')
+        tgt_meshname = tgt_mesh_dir+ f'/{model_num}/{model_num}.obj'
         tgt_mesh = trimesh.load(tgt_meshname)
         src_mesh = trimesh.load(mesh_fname)
         tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
@@ -2080,15 +2081,16 @@ if __name__ == '__main__':
 
     pifu_dir = '/home/nas1_temp/minsoolee/Human/PIFu/apps/val_result/Thuman/'
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_1_tt_nerf_24hie_03_rayontarget_attloss_occinout/checkpoints/latest_forstage2.pt'
-    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_nerf_0302_24hie_03_occ_2v_alpha_concat/checkpoints/2022_03_06_01_07_09.pt'
+    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_tt_nerf_24hie_03_occ_2v_alphaconcat/checkpoints/latest.pt'
 
     # validation
     #validation_pifu(pifu_dir + 'pred_vert/',  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_pifu')
     #validation_pamir(geometry_model_dir_pamir, texture_model_dir_pamir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_pamir_optpamirwokp/', use_gcmr= True, iternum=50)
-    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_twindom_ours_stage1_optmask/',use_gcmr= True, iternum=50)
-    validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage3_optmask/',
-                     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_optmask/' + '/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_200',
-                     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_ours_stage1_optmask/smpl_optm')
+    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage1_optmask/',use_gcmr= True, iternum=50)
+    stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage1_optmask/'
+    validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage3_optmask/',
+                     stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_28',
+                     stage1_dir_forstage3+'/smpl_optm')
     import pdb; pdb.set_trace()
 
 
