@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=5
-NAME='0328_tt_pamir_texture'
+GPU_ID=2
+NAME='0328_tt_pamir_texture_gtsmpl'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
 PRETRAINED_GCMR_CHECKPOINT='./results/gcmr_pretrained'
-PRETRAINED_PAMIR_NET_CHECKPOINT='./results/0328_tt_pamir_geometry_gtsmpl/checkpoints/.pt'
+PRETRAINED_PAMIR_NET_CHECKPOINT='./results/0328_tt_pamir_geometry_gtsmpl/checkpoints/2022_03_29_11_06_33.pt'
 LR=2e-4
 BATCH_SIZE=3
 LOG_DIR='./results'
