@@ -671,7 +671,17 @@ class AllImgDataset(Dataset):
         # self.data_list = self.data_list_all[501:]
         # self.data_list = self.data_list_all[260:]
         # self.data_list = self.data_list_all[:260]
-        self.data_list = self.data_list_all
+
+        # self.data_list = self.data_list_all[:130]
+        # self.data_list = self.data_list_all[130:260]
+        # self.data_list = self.data_list_all[260:390]
+        # self.data_list = self.data_list_all[390:520]
+        # self.data_list = self.data_list_all[520:650]
+        # self.data_list = self.data_list_all[650:780]
+        # self.data_list = self.data_list_all[780:910]
+        self.data_list = self.data_list_all[910:]
+
+        # self.data_list = self.data_list_all
         print(self.data_list)
         self.source_view_list = list(range(0, 360, 18))
         self.target_view_diff = [180]
@@ -705,7 +715,16 @@ class AllImgDataset(Dataset):
 
 
         # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 501
-        model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
+
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 130
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 260
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 390
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 520
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 650
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 780
+        model_id = item // (len(self.target_view_diff) * len(self.source_view_list)) + 910
+        # model_id = item // (len(self.target_view_diff) * len(self.source_view_list))
         view_id = self.source_view_list[(item % (len(self.target_view_diff) * len(self.source_view_list))) // len(self.target_view_diff)]
         target_view_id_ind = (item % (len(self.target_view_diff) * len(self.source_view_list))) % len(self.target_view_diff)
         target_view_id = self.target_view_diff[target_view_id_ind]

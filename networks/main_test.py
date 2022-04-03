@@ -1880,10 +1880,9 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
         #     batch['scale'] = torch.load(os.path.join(load_dir, f'{model_id}_scale.pth')).cuda()
         #     batch['trans'] = torch.load(os.path.join(load_dir, f'{model_id}_trans.pth')).cuda()
 
-        nerf_color, weight_sum = evaluater.test_nerf_target(batch['img'], batch['betas'],
+        nerf_color, nerf_color_warped, weight_sum = evaluater.test_nerf_target(batch['img'], batch['betas'],
                                          batch['pose'], batch['scale'], batch['trans'],batch["view_id"] - batch['target_view_id'], return_flow_feature=True)
-
-        # vol = nerf_color_warped[:, :128].numpy()[0]
+        vol = nerf_color_warped[:, :128].numpy()[0]
         flow = nerf_color[:, :2]
         nerf_pts_tex = nerf_color[:, 2:5]
         # nerf_attention= nerf_color_warped[:, -1:]
@@ -1906,7 +1905,7 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
         os.makedirs(flow_path, exist_ok=True)
         # os.makedirs(feature_path +'/32', exist_ok=True)
         # os.makedirs(feature_path + '/64', exist_ok=True)
-        # os.makedirs(feature_path + '/128', exist_ok=True)
+        os.makedirs(feature_path + '/128', exist_ok=True)
         os.makedirs(pred_image_path, exist_ok=True)
         os.makedirs(warped_image_path, exist_ok=True)
         # os.makedirs(attention_path, exist_ok=True)
@@ -1917,7 +1916,7 @@ def main_test_flow_feature(out_dir, pretrained_checkpoint_pamir,
         # save_image(nerf_attention, os.path.join(attention_path, file_name + '.png'))
         save_image(nerf_pts_tex, os.path.join(pred_image_path, file_name + '.png'))
         save_image(weight_sum, os.path.join(weightsum_path, file_name + '.png'))
-        # np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::2, ::2])
+        np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
         # np.save(os.path.join(feature_path, '64', file_name + '.npy'), vol[:, ::4, ::4])
         # np.save(os.path.join(feature_path, '32', file_name + '.npy'), vol[:, ::8, ::8])
 
@@ -2088,10 +2087,10 @@ if __name__ == '__main__':
     #validation_pamir(geometry_model_dir_pamir, texture_model_dir_pamir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_pamir_optpamirwokp/', use_gcmr= True, iternum=50)
     #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage1_optmask/',use_gcmr= True, iternum=50)
     stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage1_optmask/'
-    validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage3_optmask/',
-                     stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_28',
-                     stage1_dir_forstage3+'/smpl_optm')
-    import pdb; pdb.set_trace()
+    # validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results_temp/validation_thuman_ours_stage3_optmask/',
+    #                  stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_28',
+    #                  stage1_dir_forstage3+'/smpl_optm')
+
 
 
     #validation_texture (input gtsmpl 쓴다는점 주의!)
@@ -2117,8 +2116,8 @@ if __name__ == '__main__':
     #inference_multi()
     #validation_stage2()
 
-    # main_test_flow_feature(
-    #    '/home/nas1_temp/dataset/Thuman/output_stage1/0329_test',
-    #    pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
-    #    pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_1_tt_nerf_24hie_03_rayontarget_attloss_occinout/checkpoints/latest.pt')
+    main_test_flow_feature(
+       '/home/nas1_temp/dataset/Thuman/output_stage1/0403_feature',
+       pretrained_checkpoint_pamir='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt',
+       pretrained_checkpoint_pamirtex='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_1_tt_nerf_24hie_03_rayontarget_attloss_occinout/checkpoints/latest_forstage2_0403.pt')
 
