@@ -692,8 +692,8 @@ class AllImgDataset(Dataset):
         return self.len
 
     def __getitem__(self, item):
-        # data_list = self.data_list_all
-        data_list = self.data_list
+        data_list = self.data_list_all
+        # data_list = self.data_list
 
 
         # if self.training:
