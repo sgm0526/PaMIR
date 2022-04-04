@@ -2169,16 +2169,19 @@ if __name__ == '__main__':
     #validation_stage2(
     #    '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gtsmpl/output_stage2/0330_tt_final_4/epoch_50')
 
-    validation_stage2(
-        '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/output_stage2/0330_tt_ablation_nowarp/epoch_50')
-    validation_stage2(
-        '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/output_stage2/0330_ablation_coarse/epoch_50')
-    validation_stage2(
-        '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/output_stage2/0330_tt_final_4/epoch_50')
+    #validation_stage2(
+    #    '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/output_stage2/0330_tt_ablation_nowarp/epoch_50')
+    #validation_stage2(
+    #    '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/output_stage2/0330_ablation_coarse/epoch_50')
+    #validation_stage2(
+    #    '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/output_stage2/0330_tt_final_4/epoch_50')
     #inference_stage2(testing_img_dir ,'/home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp/', '/home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp/output_stage2/0330_tt_ablation_nowarp/epoch_50')
     #inference_stage2(testing_img_dir ,'/home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp/','/home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp/output_stage2/0330_ablation_coarse/epoch_50')
     #inference_stage2(testing_img_dir ,'/home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp/','/home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp/output_stage2/0330_tt_final_4/epoch_50')
 
+    #import subprocess
+
+    #subprocess.call('python inference.py --ckpt ./checkpoint/0330_tt_final_4/epoch_100.pt --path /home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp', shell=True, cwd="/home/nas1_temp/minsoolee/Human/pose-with-style")
     import pdb; pdb.set_trace()
 
     # main_test_flow_feature(
@@ -2190,12 +2193,13 @@ if __name__ == '__main__':
 
 
     # ### for fast our total inference
-    # texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_1_tt_nerf_24hie_03_rayontarget_attloss_occinout/checkpoints/latest_forstage2_0403.pt'
-    # texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
+    texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_1_tt_nerf_24hie_03_rayontarget_attloss_occinout/checkpoints/latest_forstage2_0403.pt'
+    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
     # # thuman
     # ## 1
     #
-    # validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/',use_gcmr= False, iternum=50)
+    validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/',use_gcmr= False, iternum=50)
+    import pdb; pdb.set_trace()
     # #stage2
     # stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/'
     # validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
@@ -2260,3 +2264,5 @@ if __name__ == '__main__':
     #                stage1_dir_forstage3+'/smpl_optm')
 
 
+'python test.py --ckpt ./checkpoint/0330_tt_final_4/epoch_150.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/output_stage1'
+'python inference.py --ckpt ./checkpoint/0330_tt_final_4/epoch_100.pt --path /home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp'
