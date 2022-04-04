@@ -56,6 +56,7 @@ class Trainer(BaseTrainer):
             load_pts2smpl_idx_wgt=True,
             smpl_data_folder='./data')
 
+
         # neural voxelization components
         self.smpl = SMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl').to(self.device)
         self.tet_smpl = TetraSMPL('./data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',
@@ -126,7 +127,7 @@ class Trainer(BaseTrainer):
         # read energy weights
         self.loss_weights = {
             'tex': 1.0,
-            'att': 0.005,
+            'att': 0.001, #0.005,
             'g_loss': 0.01,
             'geo': 1.0,
         }
@@ -157,6 +158,7 @@ class Trainer(BaseTrainer):
         pts = input_batch['pts']    # [:, :-self.options.point_num]
         pts_proj = input_batch['pts_proj']  # [:, :-self.options.point_num]
         gt_clr = input_batch['pts_clr']  # [:, :-self.options.point_num]
+        gt_clr2 = input_batch['pts_clr2']  # [:, :-self.options.point_num]
 
         pts_occ = input_batch['pts_occ']  # [:, :-self.options.point_num]
         pts_occ_proj = input_batch['pts_occ_proj']  # [:, :-self.options.point_num]
@@ -232,9 +234,11 @@ class Trainer(BaseTrainer):
         ## 2 train tex loss
         output_clr_, output_clr, output_att, smpl_feat, output_sigma = self.pamir_tex_net.forward(img, vol, pts, pts_proj)#, img_feat_geo, feat_occupancy)
 
-        # import pdb; pdb.set_trace
-        losses['tex'] = self.tex_loss(output_clr_, gt_clr)
-        losses['tex_final'] = self.tex_loss(output_clr, gt_clr)
+        losses['tex'] = self.tex_loss2(output_clr_, gt_clr, gt_clr2)
+        losses['tex_final'] = self.tex_loss2(output_clr, gt_clr,  gt_clr2)
+
+        losses['att'] = self.attention_loss(1-output_att[:,:, 0:1])
+
         #losses['att'] = self.attention_loss(output_att)
         #self.loss_weights['tex'] = 0
         #self.loss_weights['tex_final'] = 0
@@ -513,8 +517,26 @@ class Trainer(BaseTrainer):
         loss = self.criterion_tex(pred_clr * att, gt_clr * att)
         return loss
 
+    def tex_loss2(self, pred_clr, gt_clr, gt_clr2, att=None):
+        """Computes per-sample loss of the occupancy value"""
+        if att is None:
+            att = torch.ones_like(gt_clr)
+        if len(att.size()) != len(gt_clr.size()):
+            att = att.unsqueeze(0)
+
+
+        loss1 = abs(pred_clr - gt_clr).mean(2).unsqueeze(-1)
+        loss2 = abs(pred_clr - gt_clr2).mean(2).unsqueeze(-1)
+        loss_min = torch.min(torch.cat([loss1, loss2],-1), dim=2)[0]
+
+        # loss = self.criterion_tex(pred_clr * att, gt_clr * att)
+        return loss_min.mean()
+
     def attention_loss(self, pred_att):
         return torch.mean(-torch.log(pred_att + 1e-4))
+        # return torch.mean((pred_att - 0.9) ** 2)
+    def attention_loss2(self, pred_att):
+        return torch.mean(torch.log(pred_att + 1e-4))
         # return torch.mean((pred_att - 0.9) ** 2)
 
     def train_summaries(self, input_batch, losses=None):

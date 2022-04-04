@@ -65,7 +65,7 @@ class TrainingImgDataset(Dataset):
             self.data_list = load_data_list(dataset_dir, 'data_list_train.txt')
             self.len = len(self.data_list) * self.view_num_per_item
         else:
-            self.data_list = load_data_list(dataset_dir, 'data_list_test_thuman.txt')
+            self.data_list = load_data_list(dataset_dir, 'data_list_test_twindom.txt')
             self.model_2_viewindex = [138,155,195,73,303,225,240,333,136,197,222,272,291,298,147,38,194,275,348,40,1,13,325,273,186]
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
             self.len = len(self.data_list) * 4#self.view_num_per_item
@@ -113,6 +113,7 @@ class TrainingImgDataset(Dataset):
         pts_r_list=[]
         pts_proj_list=[]
         pts_clr_list = []
+        pts_clr2_list = []
 
         pts_occ_list = []
         pts_occ_proj_list = []
@@ -125,7 +126,7 @@ class TrainingImgDataset(Dataset):
 
         pose, betas, trans, scale = self.load_smpl_parameters(data_item)
 
-        pts, pts_clr, all_pts, all_pts_clr = self.load_points(data_item, 0, point_num)
+        pts, pts_clr,pts_clr2,  all_pts, all_pts_clr = self.load_points(data_item, 0, point_num)
         if not self.training:
             pts = all_pts
             pts_clr = all_pts_clr
@@ -145,6 +146,7 @@ class TrainingImgDataset(Dataset):
             pts_r_list.append(torch.from_numpy(pts_r))
             pts_proj_list.append(torch.from_numpy(pts_proj))
             pts_clr_list.append(torch.from_numpy(pts_clr))
+            pts_clr2_list.append(torch.from_numpy(pts_clr2))
 
 
             pts_occ_r = self.rotate_points(pts_occ, i)
@@ -166,6 +168,7 @@ class TrainingImgDataset(Dataset):
         pts_r_list = torch.stack(pts_r_list, 0)
         pts_proj_list = torch.stack(pts_proj_list, 0)
         pts_clr_list = torch.stack(pts_clr_list, 0)[0]
+        pts_clr2_list = torch.stack(pts_clr2_list, 0)[0]
         pts_occ_list = torch.stack(pts_occ_list, 0)
         pts_occ_proj_list = torch.stack(pts_occ_proj_list, 0)
         pts_ov_list = torch.stack(pts_ov_list, 0)[0]
@@ -214,6 +217,7 @@ class TrainingImgDataset(Dataset):
             'pts':  pts_r_list,
             'pts_proj': pts_proj_list,
             'pts_clr': pts_clr_list,
+            'pts_clr2': pts_clr2_list,
             'pts_occ': pts_occ_list,
             'pts_occ_proj': pts_occ_proj_list,
             'pts_ov': pts_ov_list,
@@ -281,6 +285,9 @@ class TrainingImgDataset(Dataset):
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'meta/uv_nml.png')
         uvclr_fpath = os.path.join(
             self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id)
+        view_id2 = (view_id+180)%360
+        uvclr_fpath2 = os.path.join(
+            self.dataset_dir, constant.dataset_image_subfolder, data_item, 'color_uv/%04d.png' % view_id2)
         ##uvclr_fpath = os.path.join(
         #    self.dataset_dir, constant.dataset_image_subfolder.replace('image_data', 'image_data_nolight2'), data_item,
         #    'color_uv_re/%04d.png' % view_id)
@@ -297,6 +304,9 @@ class TrainingImgDataset(Dataset):
 
             uv_render = cv.imread(uvclr_fpath)
             uv_render = cv.cvtColor(uv_render, cv.COLOR_BGR2RGB) / 255.0
+
+            uv_render2 = cv.imread(uvclr_fpath2)
+            uv_render2 = cv.cvtColor(uv_render2, cv.COLOR_BGR2RGB) / 255.0
         except ValueError as e:
             print('Value error occurred when loading ' + uvclr_fpath)
             raise ValueError(str(e))
@@ -305,10 +315,12 @@ class TrainingImgDataset(Dataset):
         uv_mask = uv_mask.reshape((-1))
         uv_pos = uv_pos.reshape((-1, 3))
         uv_render = uv_render.reshape((-1, 3))
+        uv_render2 = uv_render2.reshape((-1, 3))
         uv_normal = uv_normal.reshape((-1, 3))
 
         surface_points = uv_pos[uv_mask]
         surface_colors = uv_render[uv_mask]
+        surface_colors2 = uv_render2[uv_mask]
         surface_normal = uv_normal[uv_mask]
 
         all_points = surface_points
@@ -317,11 +329,12 @@ class TrainingImgDataset(Dataset):
         sample_id = np.int32(np.random.rand(point_num) * len(surface_points))
         surface_points = surface_points[sample_id]
         surface_colors = surface_colors[sample_id]
+        surface_colors2 = surface_colors2[sample_id]
         surface_normal = surface_normal[sample_id]
 
         surface_points += surface_normal * np.random.randn(point_num, 1) * 0.01
 
-        return surface_points, surface_colors, all_points, all_points_clr
+        return surface_points , surface_colors, surface_colors2, all_points, all_points_clr
 
     def load_points_occ(self, data_item, point_num):
         dat_fpath = os.path.join(

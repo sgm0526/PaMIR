@@ -712,13 +712,11 @@ class EvaluatorTex(object):
 
         vert_cam = scale * self.tet_smpl(theta, betas) + trans
         vol = self.voxelization(vert_cam)
-        vert_cam = vert_cam[:, :6890]
-        vert_cam_proj = self.project_points2(vert_cam, cam_f, cam_c, cam_tz)
-        _, _, att_orig, _, smpl_sdf = self.pamir_tex_net(img, vol, vert_cam ,  vert_cam_proj)
-
-
-        nerf_color_pred_before, _ = self.test_nerf_target(img, betas, theta, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
+        theta_new = torch.nn.Parameter(theta)
+        betas_new = torch.nn.Parameter(betas)
+        theta_orig = theta_new.clone().detach()
+        betas_orig = betas_new.clone().detach()
+        optm = torch.optim.Adam(params=(theta_new,), lr=2e-3)
 
 
         for i in tqdm(range(iter_num), desc='Body Fitting Optimization'):
@@ -726,14 +724,12 @@ class EvaluatorTex(object):
             vert_tetsmpl_new = self.tet_smpl(theta_new_, betas_new)
             vert_tetsmpl_new_cam = scale * vert_tetsmpl_new + trans
 
-            vol = self.voxelization(vert_tetsmpl_new_cam.detach())
+            if i % 20 == 0:
+                vol = self.voxelization(vert_tetsmpl_new_cam.detach())
+
             pred_vert_new_cam = self.graph_mesh.downsample(vert_tetsmpl_new_cam[:, :6890], n2=1)
-            #pred_vert_new_cam = vert_tetsmpl_new_cam[:, :6890]
-            #pred_vert_new_cam = pred_vert_new_cam+torch.normal(0, 0.1, size=pred_vert_new_cam.shape).cuda()
-
-            #pred_vert_new_proj = self.forward_project_points(pred_vert_new_cam, cam_r, cam_t, cam_f,2*cam_c)
+            ##    pred_vert_new_cam, cam_r, cam_t, cam_f, cam_c)
             pred_vert_new_proj =self.project_points2(pred_vert_new_cam, cam_f, cam_c, cam_tz)
-
 
 
             _,_,att,_,smpl_sdf = self.pamir_tex_net(img, vol, pred_vert_new_cam, pred_vert_new_proj )
@@ -752,9 +748,8 @@ class EvaluatorTex(object):
 
             # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
             #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-        nerf_color_pred, nerf_color_warped = self.test_nerf_target(img, betas_new, theta_new_, scale, trans,
-                                                                   torch.ones(img.shape[0]).cuda() * 0)
-        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890], nerf_color_pred_before, nerf_color_pred
+
+        return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]#, nerf_color_pred_before, nerf_color_pred
     def optm_smpl_param_pamir(self, img, keypoint, betas, pose, scale, trans, iter_num):
         assert iter_num > 0
         self.pamir_tex_net.eval()

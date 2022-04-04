@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
-GPU_ID=5
-NAME='0328_2_tt_nerf_24hie_03_occ_2v_alphaconcat'
+GPU_ID=1
+NAME='0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight001'
 USE_ADAPTIVE_GEO_LOSS='False'
 USE_GT_SMPL_VOLUME='True'
 USE_MULTISTAGE_LOSS='True'
