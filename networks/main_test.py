@@ -174,6 +174,31 @@ def validation_texture_gt():
         image_fname = os.path.join(out_dir, model_id + '_rendered_gt_image.png')
         save_image(gt_img, image_fname)
 
+def validation_downmesh_gt():
+    device = torch.device("cuda")
+    out_dir = '/home/nas1_temp/dataset/temp_mesh/'
+    os.makedirs(out_dir, exist_ok=True)
+    for step_val, batch in enumerate(tqdm(val_data_loader, desc='Testing', total=len(val_data_loader), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        if batch['view_id'].item()!=0:
+            continue
+
+        model_num = val_ds.data_list[step_val // 4]
+        model_id = model_num.zfill(4) + '_' + str(batch['view_id'].item()).zfill(4)
+
+        print(model_id)
+
+        mesh_fname = os.path.join(out_dir, model_id + '_gt_mesh_gtview.obj')
+        tgt_meshname = tgt_mesh_dir+ f'/{model_num.zfill(4)}/{model_num.zfill(4)}.obj'
+        tgt_mesh = trimesh.load(tgt_meshname)
+        tgt_mesh = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 30000)
+        obj_io.save_obj_data({'v': tgt_mesh.vertices,
+                              'f': tgt_mesh.faces},
+                             mesh_fname)
+
+
+
+
 def validation_pifu(pifu_dir, out_dir):
 
     device = torch.device("cuda")
@@ -602,14 +627,14 @@ def inference(test_img_dir, pretrained_checkpoint_pamir,
         #for stage2
         if True:
             out_dir_stage1 = os.path.join(out_dir, 'output_stage1')
-            nerf_color, weight_sum = evaluater.test_nerf_target(batch['img'], betas,
+            nerf_color, nerf_color_warped, weight_sum = evaluater.test_nerf_target(batch['img'], betas,
                                                                                    pose, scale,
                                                                                    trans,
                                                                                    torch.Tensor([-180]).cuda(),
                                                                                    return_flow_feature=True)
 
 
-            # vol = nerf_color_warped[:, :128].numpy()[0]
+            vol = nerf_color_warped[:, :128].numpy()[0]
             flow = nerf_color[:, :2]
             nerf_pts_tex = nerf_color[:, 2:5]
             # nerf_attention = nerf_color_warped[:, -1:]
@@ -625,7 +650,7 @@ def inference(test_img_dir, pretrained_checkpoint_pamir,
             os.makedirs(flow_path, exist_ok=True)
             # os.makedirs(feature_path +'/32', exist_ok=True)
             # os.makedirs(feature_path + '/64', exist_ok=True)
-            # os.makedirs(feature_path + '/128', exist_ok=True)
+            os.makedirs(feature_path + '/128', exist_ok=True)
             os.makedirs(pred_image_path, exist_ok=True)
             os.makedirs(warped_image_path, exist_ok=True)
             # os.makedirs(attention_path, exist_ok=True)
@@ -637,12 +662,10 @@ def inference(test_img_dir, pretrained_checkpoint_pamir,
             # save_image(nerf_attention, os.path.join(attention_path, file_name + '.png'))
             save_image(nerf_pts_tex, os.path.join(pred_image_path, file_name + '.png'))
             save_image(weight_sum, os.path.join(weightsum_path, file_name + '.png'))
-            # if const.down_scale == 2:
-            #     np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::2, ::2])
-            # elif const.down_scale == 1:
-            #     np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
-            # else:
-            #     raise NotImplementedError()
+            if const.down_scale == 1:
+                np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
+            else:
+                raise NotImplementedError()
 
 
         if True:
@@ -1190,14 +1213,14 @@ def validation(pretrained_checkpoint_pamir,
         #for stage2
         if True:
             out_dir_stage1 = os.path.join(out_dir, 'output_stage1')
-            nerf_color, weight_sum = evaluater.test_nerf_target(batch['img'], betas,
+            nerf_color, nerf_color_warped, weight_sum = evaluater.test_nerf_target(batch['img'], betas,
                                                                                    pose, scale,
                                                                                    trans,
                                                                                    batch["view_id"] - batch[
                                                                                        'target_view_id'],
                                                                                    return_flow_feature=True)
 
-            # vol = nerf_color_warped[:, :128].numpy()[0]
+            vol = nerf_color_warped[:, :128].numpy()[0]
             flow = nerf_color[:, :2]
             nerf_pts_tex = nerf_color[:, 2:5]
             # nerf_attention = nerf_color_warped[:, -1:]
@@ -1214,7 +1237,7 @@ def validation(pretrained_checkpoint_pamir,
             os.makedirs(flow_path, exist_ok=True)
             # os.makedirs(feature_path +'/32', exist_ok=True)
             # os.makedirs(feature_path + '/64', exist_ok=True)
-            # os.makedirs(feature_path + '/128', exist_ok=True)
+            os.makedirs(feature_path + '/128', exist_ok=True)
             os.makedirs(pred_image_path, exist_ok=True)
             os.makedirs(warped_image_path, exist_ok=True)
             # os.makedirs(attention_path, exist_ok=True)
@@ -1226,12 +1249,10 @@ def validation(pretrained_checkpoint_pamir,
             # save_image(nerf_attention, os.path.join(attention_path, file_name + '.png'))
             save_image(nerf_pts_tex, os.path.join(pred_image_path, file_name + '.png'))
             save_image(weight_sum, os.path.join(weightsum_path, file_name + '.png'))
-            # if const.down_scale == 2:
-            #     np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::2, ::2])
-            # elif const.down_scale == 1:
-            #     np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
-            # else:
-            #     raise NotImplementedError()
+            if const.down_scale == 1:
+                np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
+            else:
+                raise NotImplementedError()
             # np.save(os.path.join(feature_path, '64', file_name + '.npy'), vol[:, ::4, ::4])
             # np.save(os.path.join(feature_path, '32', file_name + '.npy'), vol[:, ::8, ::8])
 
@@ -2097,6 +2118,7 @@ def validation_stage2(stage2_dir ):
 
 if __name__ == '__main__':
     # validation_texture_gt()
+    #validation_downmesh_gt()
 
     pifu_dir = '/home/nas1_temp/minsoolee/Human/PIFu/apps/val_result_geo/Twindom/'
     # geometry_model_dir_pamir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/pamir_geometry/checkpoints/latest.pt'
@@ -2110,7 +2132,7 @@ if __name__ == '__main__':
     # 2022_04_01_07_48_14.pt' #13th
     #2022_04_02_05_36_11.pt' #15th
     #2022_04_04_00_11_08.pt # 18th
-    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
+    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_04_01_30_01.pt' # latest.pt' #10th
     #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
     # '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_2_tt_nerf_24hie_03_occ_2v_alphaconcat/checkpoints/2022_04_03_21_58_24.pt'# 24th
     #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_04_01_30_01.pt' #10th
@@ -2123,8 +2145,8 @@ if __name__ == '__main__':
     #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_optpamirwokp/',use_gcmr= True, iternum=50)
     #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/',use_gcmr= False, iternum=50)
 
-    #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp/'
-    #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_5953_twindom_ours_stage3_optpamirwokp/',
+    #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_optpamirwokp/'
+    #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_3001_thuman_ours_stage3_optpamirwokp/',
     #                 stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_100',
     #                 stage1_dir_forstage3+'/smpl_optm')
 
@@ -2144,7 +2166,7 @@ if __name__ == '__main__':
     #import pdb; pdb.set_trace()
 
     #inference
-    testing_img_dir = '/home/nas1_temp/dataset/deepfashion/selected_200'
+    testing_img_dir = '/home/nas1_temp/dataset/deepfashion/all'#selected_200'
 
     #pifu_dir = '/home/nas1_temp/dataset/deepfashion/selected_200/pifu_output/' #deepfashion
     #inference_pifu(testing_img_dir, pifu_dir+'pred_vert/', os.path.join(testing_img_dir,'outputs_pifu'))
@@ -2153,7 +2175,7 @@ if __name__ == '__main__':
     #inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp'), iternum=50)
 
     #stage1_dir_forstage3 =os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp')
-    #inference_multi(testing_img_dir, geometry_model_dir_pamir,texture_model_dir_multi, os.path.join(testing_img_dir,'outputs_5953_ours_stage3_optpamirwokp'),
+    #inference_multi(testing_img_dir, geometry_model_dir_pamir,texture_model_dir_multi, os.path.join(testing_img_dir,'outputs_3001_ours_stage3_optpamirwokp'),
     #                stage1_dir_forstage3+'/output_stage2/0330_tt_final_4/epoch_150',
     #                stage1_dir_forstage3+'/smpl_optm')
 
@@ -2182,7 +2204,7 @@ if __name__ == '__main__':
     #import subprocess
 
     #subprocess.call('python inference.py --ckpt ./checkpoint/0330_tt_final_4/epoch_100.pt --path /home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp', shell=True, cwd="/home/nas1_temp/minsoolee/Human/pose-with-style")
-    import pdb; pdb.set_trace()
+
 
     # main_test_flow_feature(
     #    '/home/nas1_temp/dataset/Thuman/output_stage1/0329_test',
@@ -2194,20 +2216,20 @@ if __name__ == '__main__':
 
     # ### for fast our total inference
     texture_model_dir = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_1_tt_nerf_24hie_03_rayontarget_attloss_occinout/checkpoints/latest_forstage2_0403.pt'
-    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
+    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_06_01_58_01.pt' #16th 2022_04_05_01_12_33.pt'  #13th
     # # thuman
     # ## 1
     #
-    validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/',use_gcmr= False, iternum=50)
-    import pdb; pdb.set_trace()
-    # #stage2
-    # stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/'
-    # validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
-    #                  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage3_gtsmpl/',
-    #                  stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_100')
+    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/',use_gcmr= False, iternum=50)#done
+    # #stage2 'CUDA_VISIBLE_DEVICES=1 python test.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/output_stage1'#done
+
+    stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/'
+    validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
+                      '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_100_5801_thuman_ours_stage3_gtsmpl/',
+                      stage1_dir_forstage3 + '/output_stage2/0404_tt_feature_final_2/epoch_100')
     # validation_texture_multi(geometry_model_dir_pamir, texture_model_dir_multi,
     #                          '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validationtex_thuman_ours_stage3',
-    #                          '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/' + '/output_stage2/0330_tt_final_4/epoch_100', )
+    #                          '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/' + '/output_stage2/0330_tt_final_4/epoch_100', )#done
     #
     #
     # ## 2
@@ -2215,49 +2237,52 @@ if __name__ == '__main__':
     #                    '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validationtex_thuman_ours_stage1')
     #
     # ## 3
-    # validation(geometry_model_dir_pamir, texture_model_dir,
-    #            '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_optpamirwokp/',
-    #            use_gcmr=True, iternum=50)
-    # #stage2
-    # stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_optpamirwokp/'
-    # validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
-    #                  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage3_optpamirwokp/',
-    #                  stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_100',
-    #                  stage1_dir_forstage3+'/smpl_optm')
+    #validation(geometry_model_dir_pamir, texture_model_dir,
+    #           '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_optpamirwokp/',
+    #           use_gcmr=True, iternum=50)#done
+    # #stage2 'CUDA_VISIBLE_DEVICES=1 python test.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_optpamirwokp/output_stage1'#done
+
+    #stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_optpamirwokp/'
+    #validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
+    #                 '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_100_5801_thuman_ours_stage3_optpamirwokp/',
+    #                 stage1_dir_forstage3 + '/output_stage2/0404_tt_feature_final_2/epoch_100',
+    #                 stage1_dir_forstage3+'/smpl_optm')#done
     #
     #
     # #twindom
     # ## 4
-    # validation(geometry_model_dir_pamir, texture_model_dir,
-    #            '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/',
-    #            use_gcmr=False, iternum=50)
-    # #stage2
-    # stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/'
-    # validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
-    #                  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage3_gtsmpl/',
-    #                  stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_100')
+    #validation(geometry_model_dir_pamir, texture_model_dir,
+    #           '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/',
+    #           use_gcmr=False, iternum=50)#done
+    # #stage2 'CUDA_VISIBLE_DEVICES=1 python test.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/output_stage1'#done
+
+    #stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/'
+    #validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
+    #                 '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_100_5801_twindom_ours_stage3_gtsmpl/',
+    #                 stage1_dir_forstage3 + '/output_stage2/0404_tt_feature_final_2/epoch_100')
     # validation_texture_multi(geometry_model_dir_pamir, texture_model_dir_multi,
     #                          '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validationtex_twindom_ours_stage3',
-    #                          '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/' + '/output_stage2/0330_tt_final_4/epoch_100', )
+    #                          '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_gtsmpl/' + '/output_stage2/0330_tt_final_4/epoch_100', )#done
     #
     # ## 5
     # validation_texture(geometry_model_dir_pamir, texture_model_dir,
     #                    '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validationtex_twindom_ours_stage1')
     #
     # ## 6
-    # validation(geometry_model_dir_pamir, texture_model_dir,
-    #            '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_optpamirwokp/',
-    #            use_gcmr=True, iternum=50)
-    # #stage2
-    # stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_optpamirwokp/'
-    # validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
-    #                  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage3_optpamirwokp/',
-    #                  stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_100',
-    #                  stage1_dir_forstage3+'/smpl_optm')
+    #validation(geometry_model_dir_pamir, texture_model_dir,
+    #           '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_optpamirwokp/',
+    #           use_gcmr=True, iternum=50)#done
+    # #stage2 'CUDA_VISIBLE_DEVICES=1 python test.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_optpamirwokp/output_stage1'#done
+
+    #stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_twindom_ours_stage1_optpamirwokp/'
+    #validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
+    #                 '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_100_5801_twindom_ours_stage3_optpamirwokp/',
+    #                 stage1_dir_forstage3 + '/output_stage2/0404_tt_feature_final_2/epoch_100',
+    #                 stage1_dir_forstage3+'/smpl_optm')#done
     #
     # ## 7
-    # inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'ours/outputs_ours_stage1_optpamirwokp'), iternum=50)
-    # #stage2
+    #inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'ours/outputs_ours_stage1_optpamirwokp'), iternum=50)#done
+    # #stage2 'CUDA_VISIBLE_DEVICES=1 python inference.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --path /home/nas1_temp/dataset/deepfashion/selected_200/ours/outputs_ours_stage1_optpamirwokp'
     # stage1_dir_forstage3 =os.path.join(testing_img_dir,'ours/outputs_ours_stage1_optmask')
     # inference_multi(testing_img_dir, geometry_model_dir_pamir,texture_model_dir_multi, os.path.join(testing_img_dir,'ours/outputs_ours_stage3_optmask'),
     #                stage1_dir_forstage3+'/output_stage2/0330_tt_final_4/epoch_100',
@@ -2266,3 +2291,6 @@ if __name__ == '__main__':
 
 'python test.py --ckpt ./checkpoint/0330_tt_final_4/epoch_150.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/output_stage1'
 'python inference.py --ckpt ./checkpoint/0330_tt_final_4/epoch_100.pt --path /home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp'
+
+'CUDA_VISIBLE_DEVICES=1 python inference.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --path /home/nas1_temp/dataset/deepfashion/selected_200/outputs_ours_stage1_optpamirwokp'
+'CUDA_VISIBLE_DEVICES=1 python test.py --ckpt ./checkpoint/0404_tt_feature_final_2/epoch_100.pt --stage1_dir /home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/ours/validation_thuman_ours_stage1_gtsmpl/output_stage1'

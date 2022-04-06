@@ -160,6 +160,14 @@ class MLP(BaseNetwork):
         out = self.conv4(out)
         return out
 
+    def forward2(self, x):
+        out = self.conv0(x)
+        out = self.conv1(torch.cat([x, out], dim=1))
+        out = self.conv2(torch.cat([x, out], dim=1))
+        out = self.conv3(torch.cat([x, out], dim=1))
+        out2 = self.conv4(out)
+        return out2, out
+
 
 class MLP_NeRF(BaseNetwork):
     """
@@ -601,7 +609,11 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pts_pe= self.pe(pts.reshape(-1, 3)).reshape(batch_size, point_num, -1) #batch_size, point_num, ch
 
         #import pdb; pdb.set_trace()
-        pt_out= self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+        if return_flow_feature:
+            pt_out, feature = self.mlp.forward2(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+        else:
+            pt_out = self.mlp(torch.cat([pt_feat, pts_pe.permute(0, 2, 1).unsqueeze(-1)], dim=1))
+
         #pt_out = self.mlp(torch.cat([pt_feat, pts.permute(0, 2, 1).unsqueeze(-1)], dim=1))
 
         pt_out = pt_out.permute([0, 2, 3, 1])
@@ -621,7 +633,7 @@ class TexPamirNetAttention_nerf(BaseNetwork):
         pt_tex_sample = pt_tex_sample.permute([0, 2, 3, 1]).squeeze(2)
         pt_tex = pt_tex_att * pt_tex_sample + (1 - pt_tex_att) * pt_tex_pred
         if return_flow_feature:
-            return torch.cat([grid_2d.squeeze(-2), pt_tex_pred], dim=-1), None, pt_tex_att, None, pt_tex_sigma
+            return torch.cat([grid_2d.squeeze(-2), pt_tex_pred], dim=-1), feature.permute(0,2,1,3).squeeze(-1), pt_tex_att, None, pt_tex_sigma
 
         return pt_tex_pred, pt_tex, pt_tex_att, pt_feat_3D.squeeze(), pt_tex_sigma
 
