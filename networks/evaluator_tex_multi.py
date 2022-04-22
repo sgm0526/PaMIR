@@ -770,6 +770,7 @@ class EvaluatorTex(object):
     def forward_infer_color_value(self, img, vol, pts, pts_proj):
         #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
         _,clr, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj)#, img_feat_geo, feat_occupancy=None) ##
+        #_, _, clr, _, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj)
         return clr
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):

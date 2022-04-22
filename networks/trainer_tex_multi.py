@@ -127,7 +127,7 @@ class Trainer(BaseTrainer):
         # read energy weights
         self.loss_weights = {
             'tex': 1.0,
-            'att': 0.001, #0.005,
+            'att': 0.01, #0.005,
             'g_loss': 0.01,
             'geo': 1.0,
         }

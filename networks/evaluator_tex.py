@@ -748,6 +748,9 @@ class EvaluatorTex(object):
             # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
             #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
 
+        if iter_num==0:
+            return theta_new, betas_new, vert_cam[:, :6890]
+
         return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]#, nerf_color_pred_before, nerf_color_pred
     def optm_smpl_param_pamir(self, img, keypoint, betas, pose, scale, trans, iter_num):
         assert iter_num > 0
@@ -970,7 +973,12 @@ class EvaluatorTex(object):
 
     def forward_infer_color_value(self, img, vol, pts, pts_proj):
         #img_feat_geo = self.pamir_net.get_img_feature(img, no_grad=True)
-        _,clr, _, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj)#, img_feat_geo, feat_occupancy=None) ##
+        _, clr, _, _, _ = self.pamir_tex_net.forward(img, vol, pts, pts_proj)  # , img_feat_geo, feat_occupancy=None) ##
+
+        #_,_, clr, _ , _= self.pamir_tex_net.forward(img, vol, pts, pts_proj)
+        #clr = clr.repeat(1,1,3)
+        #clr[...,0] = 1.-clr[...,0]
+        #clr[..., 2] = 0
         return clr
 
     def forward_infer_attention_value_group(self, img, vol, pts, pts_proj, group_size):

@@ -760,14 +760,16 @@ class TexPamirNetAttention_nerf_multiview(BaseNetwork):
         super(TexPamirNetAttention_nerf_multiview, self).__init__()
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
-        self.feat_ch_out = 3 + 3+ 1 #+1
+
+        self.num_view= 4
+        self.feat_ch_out = 3 + 1+ 1 +self.num_view#+1
         self.feat_ch_occupancy = 128
         #self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
         self.add_module('cg', hg2.HourglassNet(2, 3, 128, self.feat_ch_2D))
         self.add_module('ve', ve2.VolumeEncoder(3, self.feat_ch_3D))
         num_freq= 10
         self.pe = PositionalEncoding(num_freqs=num_freq, d_in=3, freq_factor=np.pi, include_input=True)
-        self.add_module('mlp',MLP( self.feat_ch_3D +(self.feat_ch_2D + num_freq * 2 * 3 + 3)*2, self.feat_ch_out, out_sigmoid=False))
+        self.add_module('mlp',MLP( self.feat_ch_3D +(self.feat_ch_2D + num_freq * 2 * 3 + 3)*self.num_view, self.feat_ch_out, out_sigmoid=False))
 
 
         logging.info('#trainable params of 2d encoder = %d' %
@@ -833,7 +835,7 @@ class TexPamirNetAttention_nerf_multiview(BaseNetwork):
         pt_out = pt_out.permute([0, 2, 3, 1])
         pt_out = pt_out.view(batch_size, point_num, self.feat_ch_out)
         pt_tex_pred = pt_out[:, :, :3].sigmoid()
-        pt_tex_att = pt_out[:, :, 3:6]#.sigmoid() # b, num, 3 (sourcenum)
+        pt_tex_att = pt_out[:, :, 3:3+self.num_view+1]#.sigmoid() # b, num, 3 (sourcenum)
         pt_tex_sigma = pt_out[:, :, -1:].sigmoid()
 
 

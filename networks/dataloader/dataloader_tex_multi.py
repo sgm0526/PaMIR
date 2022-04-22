@@ -70,8 +70,7 @@ class TrainingImgDataset(Dataset):
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
             self.len = len(self.data_list) * 4#self.view_num_per_item
 
-        if False:
-            self.model_2_viewindex = [180] * 25
+        self.num_view = 4
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))
@@ -104,7 +103,13 @@ class TrainingImgDataset(Dataset):
 
         if True :
             #source_view_list = [view_id, view_id]
-            source_view_list = [view_id, (view_id+180)%360]
+            #source_view_list = [view_id, (view_id+180)%360]
+
+            source_view_list=[]
+            for k in range(self.num_view):
+                view_ = int((view_id+k*360/self.num_view)%360)
+                source_view_list.append(view_)
+
 
         source_img_list=[]
         source_mask_list = []
@@ -196,7 +201,7 @@ class TrainingImgDataset(Dataset):
             target_view_id = random.choice(target_view_list)
 
         else:
-            target_view_id = source_view_list[1]
+            target_view_id = source_view_list[self.num_view//2]
             #target_view_id  = self.model_2_targetviewindex[model_id]
 
         if target_view_id == view_id:

@@ -1213,48 +1213,51 @@ def validation(pretrained_checkpoint_pamir,
         #for stage2
         if True:
             out_dir_stage1 = os.path.join(out_dir, 'output_stage1')
-            nerf_color, nerf_color_warped, weight_sum = evaluater.test_nerf_target(batch['img'], betas,
-                                                                                   pose, scale,
-                                                                                   trans,
-                                                                                   batch["view_id"] - batch[
-                                                                                       'target_view_id'],
-                                                                                   return_flow_feature=True)
+            for k in [90,180,270]:
+                batch['target_view_id'] = (batch["view_id"]+k)%360
 
-            vol = nerf_color_warped[:, :128].numpy()[0]
-            flow = nerf_color[:, :2]
-            nerf_pts_tex = nerf_color[:, 2:5]
-            # nerf_attention = nerf_color_warped[:, -1:]
-            warped_image = F.grid_sample(batch['img'].cpu(), flow.permute(0, 2, 3, 1))
+                nerf_color, nerf_color_warped, weight_sum = evaluater.test_nerf_target(batch['img'], betas,
+                                                                                       pose, scale,
+                                                                                       trans,
+                                                                                       batch["view_id"] - batch[
+                                                                                           'target_view_id'],
+                                                                                       return_flow_feature=True)
+
+                vol = nerf_color_warped[:, :128].numpy()[0]
+                flow = nerf_color[:, :2]
+                nerf_pts_tex = nerf_color[:, 2:5]
+                # nerf_attention = nerf_color_warped[:, -1:]
+                warped_image = F.grid_sample(batch['img'].cpu(), flow.permute(0, 2, 3, 1))
 
 
-            flow_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'flow')
-            feature_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'feature')
-            warped_image_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'warped_image')
-            pred_image_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'pred_image')
-            attention_path = os.path.join(out_dir_stage1,model_num.zfill(4), 'attention')
-            weightsum_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'weight_sum')
+                flow_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'flow')
+                feature_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'feature')
+                warped_image_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'warped_image')
+                pred_image_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'pred_image')
+                attention_path = os.path.join(out_dir_stage1,model_num.zfill(4), 'attention')
+                weightsum_path = os.path.join(out_dir_stage1, model_num.zfill(4), 'weight_sum')
 
-            os.makedirs(flow_path, exist_ok=True)
-            # os.makedirs(feature_path +'/32', exist_ok=True)
-            # os.makedirs(feature_path + '/64', exist_ok=True)
-            os.makedirs(feature_path + '/128', exist_ok=True)
-            os.makedirs(pred_image_path, exist_ok=True)
-            os.makedirs(warped_image_path, exist_ok=True)
-            # os.makedirs(attention_path, exist_ok=True)
-            os.makedirs(weightsum_path, exist_ok=True)
-            file_name = str(batch["view_id"].item()).zfill(4) + '_' + str(batch["target_view_id"].item()).zfill(4)
-            save_image(torch.cat([(flow / 2 + 0.5), torch.zeros((flow.size(0), 1, flow.size(2), flow.size(3)))], dim=1),
-                       os.path.join(flow_path, file_name + '.png'))
-            save_image(warped_image, os.path.join(warped_image_path, file_name + '.png'))
-            # save_image(nerf_attention, os.path.join(attention_path, file_name + '.png'))
-            save_image(nerf_pts_tex, os.path.join(pred_image_path, file_name + '.png'))
-            save_image(weight_sum, os.path.join(weightsum_path, file_name + '.png'))
-            if const.down_scale == 1:
-                np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
-            else:
-                raise NotImplementedError()
-            # np.save(os.path.join(feature_path, '64', file_name + '.npy'), vol[:, ::4, ::4])
-            # np.save(os.path.join(feature_path, '32', file_name + '.npy'), vol[:, ::8, ::8])
+                os.makedirs(flow_path, exist_ok=True)
+                # os.makedirs(feature_path +'/32', exist_ok=True)
+                # os.makedirs(feature_path + '/64', exist_ok=True)
+                os.makedirs(feature_path + '/128', exist_ok=True)
+                os.makedirs(pred_image_path, exist_ok=True)
+                os.makedirs(warped_image_path, exist_ok=True)
+                # os.makedirs(attention_path, exist_ok=True)
+                os.makedirs(weightsum_path, exist_ok=True)
+                file_name = str(batch["view_id"].item()).zfill(4) + '_' + str(batch["target_view_id"].item()).zfill(4)
+                save_image(torch.cat([(flow / 2 + 0.5), torch.zeros((flow.size(0), 1, flow.size(2), flow.size(3)))], dim=1),
+                           os.path.join(flow_path, file_name + '.png'))
+                save_image(warped_image, os.path.join(warped_image_path, file_name + '.png'))
+                # save_image(nerf_attention, os.path.join(attention_path, file_name + '.png'))
+                save_image(nerf_pts_tex, os.path.join(pred_image_path, file_name + '.png'))
+                save_image(weight_sum, os.path.join(weightsum_path, file_name + '.png'))
+                if const.down_scale == 1:
+                    np.save(os.path.join(feature_path, '128', file_name + '.npy'), vol[:, ::4, ::4])
+                else:
+                    raise NotImplementedError()
+                # np.save(os.path.join(feature_path, '64', file_name + '.npy'), vol[:, ::4, ::4])
+                # np.save(os.path.join(feature_path, '32', file_name + '.npy'), vol[:, ::8, ::8])
 
 
 
@@ -1603,6 +1606,7 @@ def validation_multi(pretrained_checkpoint_pamir,
         view_id2 = str(batch['view_id'][:, 1].item()).zfill(4)
 
 
+
         img_fpath1 = stage2_dir+  f'/{model_num}/{view_id1}.png'#f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}.png'
         img1 = cv.imread(img_fpath1).astype(np.uint8)
         img1 = np.float32(cv.cvtColor(img1, cv.COLOR_RGB2BGR)) / 255.
@@ -1611,7 +1615,20 @@ def validation_multi(pretrained_checkpoint_pamir,
         img2 = cv.imread(img_fpath2).astype(np.uint8)
         img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
         img2 = torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
-        img_pair = torch.stack([img1, img2], 1)
+
+        view_id3 = str(batch['view_id'][:, 2].item()).zfill(4)
+        view_id4 = str(batch['view_id'][:, 3].item()).zfill(4)
+
+        img_fpath3 = stage2_dir + f'/{model_num}/{view_id1}_{view_id3}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
+        img3 = cv.imread(img_fpath3).astype(np.uint8)
+        img3 = np.float32(cv.cvtColor(img3, cv.COLOR_RGB2BGR)) / 255.
+        img3 = torch.from_numpy(img3.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        img_fpath4 = stage2_dir + f'/{model_num}/{view_id1}_{view_id4}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
+        img4 = cv.imread(img_fpath4).astype(np.uint8)
+        img4 = np.float32(cv.cvtColor(img4, cv.COLOR_RGB2BGR)) / 255.
+        img4 = torch.from_numpy(img4.transpose((2, 0, 1))).unsqueeze(0).cuda()
+
+        img_pair = torch.stack([img1, img2, img3, img4], 1)
 
         vol_res = 256
         if False:
@@ -2132,29 +2149,36 @@ if __name__ == '__main__':
     # 2022_04_01_07_48_14.pt' #13th
     #2022_04_02_05_36_11.pt' #15th
     #2022_04_04_00_11_08.pt # 18th
-    texture_model_dir_multi = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_04_01_30_01.pt' # latest.pt' #10th
+    texture_model_dir_multi =  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0413_uv2_tt_nerf_24hie_03_occ_4v_alphaconcat_attlossminus_weight01/checkpoints/latest.pt'
     #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
     # '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_2_tt_nerf_24hie_03_occ_2v_alphaconcat/checkpoints/2022_04_03_21_58_24.pt'# 24th
     #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_04_01_30_01.pt' #10th
     # '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight002/checkpoints/2022_04_04_04_25_55.pt' #9th
+    #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0413_uv2_tt_nerf_24hie_03_occ_4v_alphaconcat_attlossminus_weight01/checkpoints/latest.pt'
     # validation
     #validation_pifu(pifu_dir + 'pred_vert/',  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_pifu')
     #validation_pamir(geometry_model_dir_pamir, texture_model_dir_pamir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_pamir_optpamirwokp/', use_gcmr= True, iternum=50)
     #validation_pamir(geometry_model_dir_pamir, texture_model_dir_pamir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_pamir_gtsmpl/',  use_gcmr=False, iternum=50)
 
-    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_optpamirwokp/',use_gcmr= True, iternum=50)
-    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_gtsmpl/',use_gcmr= False, iternum=50)
+    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp_4view/',use_gcmr= True, iternum=50)
+    #validation(geometry_model_dir_pamir, texture_model_dir,'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gcmr/',use_gcmr=True, iternum=0)
+    #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gtsmpl_gamma/',use_gcmr= False, iternum=50)
 
-    stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp/'
-    validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_230_3001_twindom_ours_stage3_optpamirwokp/',
-                     stage1_dir_forstage3 + '/output_stage2/0410_tt_final_re/epoch_230',#0330_tt_final_4/epoch_100',
+    stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp_4view/'
+    validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage3_optpamirwokp_4view_/',
+                     stage1_dir_forstage3 + '/output_stage2/0414_tt_final_4view/epoch_50',#0410_tt_final_re/epoch_230',#0330_tt_final_4/epoch_100',
                      stage1_dir_forstage3+'/smpl_optm')
+
+    #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gcmr/'
+    #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_220_3001_thuman_ours_stage3_gcmr/',
+    #                stage1_dir_forstage3 + '/output_stage2/0410_tt_final_re/epoch_220',#0330_tt_final_4/epoch_100',
+    #                stage1_dir_forstage3+'/smpl_optm')
 
     #stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gtsmpl/'
     #validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
-    #                 '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_2555_thuman_ours_stage3_gtsmpl/',
+    #                 '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_3001_thuman_ours_stage3_gtsmpl_gamma/',
     #                 stage1_dir_forstage3 + '/output_stage2/0330_tt_final_4/epoch_100')
-    #import pdb; pdb.set_trace()
+
 
 
     #validation_texture (input gtsmpl 쓴다는점 주의!)
