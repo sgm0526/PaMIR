@@ -682,7 +682,7 @@ class EvaluatorTex(object):
 
 
     def optm_smpl_param_pamirwokp(self, img, mask, betas, pose, scale, trans, iter_num):
-        assert iter_num > 0
+        # assert iter_num > 0
         self.pamir_tex_net.eval()
 
         cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c

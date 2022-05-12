@@ -70,7 +70,7 @@ class TrainingImgDataset(Dataset):
             self.model_2_targetviewindex = [249,56,349,291,240,218,243,49,298,162,166,344,133,77,35,232,197,256,288,68,184,174,15,193,198]
             self.len = len(self.data_list) * 4#self.view_num_per_item
 
-        self.num_view = 4
+        self.num_view = 2
 
         # load smpl model data for usage
         jmdata = np.load(os.path.join(smpl_data_folder, 'joint_model.npz'))

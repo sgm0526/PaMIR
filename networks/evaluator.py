@@ -182,7 +182,7 @@ class Evaluator(object):
         return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
 
     def optm_smpl_param_wokp(self, img, betas, pose, scale, trans, iter_num):
-        assert iter_num > 0
+        #assert iter_num > 0
         self.pamir_net.eval()
         cam_f, cam_tz, cam_c = const.cam_f, const.cam_tz, const.cam_c
         cam_r = torch.tensor([1, -1, -1], dtype=torch.float32).to(self.device)
@@ -232,7 +232,8 @@ class Evaluator(object):
             optm.step()
             # print('Iter No.%d: loss_fitting = %f, loss_bias = %f, loss_kp = %f' %
             #       (i, loss_fitting.item(), loss_bias.item(), loss_kp.item()))
-
+        if iter_num==0:
+            return theta_new, betas_new, vert_cam[:, :6890]
         return theta_new, betas_new, vert_tetsmpl_new_cam[:, :6890]
 
     def optm_smpl_param_mask(self, img, mask, betas, pose, scale, trans, iter_num):

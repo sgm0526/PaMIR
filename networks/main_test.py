@@ -513,22 +513,23 @@ def inference_pamir(test_img_dir, pretrained_checkpoint_pamir,
                              mesh_fname)
 
         ## render vc 추가
-        target_viewid = 180 #-(batch['view_id'].item() + 180)
-        rendered_img = render_mesh(mesh_fname, render_angle=target_viewid)
-        rendered_img = torch.from_numpy(rendered_img).permute(2, 0, 1).unsqueeze(0)
-        # save_image
-        image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
-        save_image(rendered_img, image_fname)
+        if False:
+            target_viewid = 180 #-(batch['view_id'].item() + 180)
+            rendered_img = render_mesh(mesh_fname, render_angle=target_viewid)
+            rendered_img = torch.from_numpy(rendered_img).permute(2, 0, 1).unsqueeze(0)
+            # save_image
+            image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
+            save_image(rendered_img, image_fname)
 
-        ## measure reID
+            ## measure reID
 
-        reid_dist = get_reid_dist(rendered_img, batch['img'], batch['mask'])
-        reid_list.append(reid_dist.item())
+            reid_dist = get_reid_dist(rendered_img, batch['img'], batch['mask'])
+            reid_list.append(reid_dist.item())
 
-        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-            f.write("model id: %s \n" % model_id)
-        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-            f.write("reid : %f  : \n" % reid_dist)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("model id: %s \n" % model_id)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("reid : %f  : \n" % reid_dist)
 
     print('reid mean:', np.mean(reid_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
@@ -555,7 +556,7 @@ def inference(test_img_dir, pretrained_checkpoint_pamir,
         img_dir = batch['img_dir'][0]
         model_id = os.path.split(img_dir)[1][:-4]
 
-        vol_res = 256
+        vol_res = 1024 #256
 
         if False:
             surface_render_pred, surface_render_alpha = evaluater.test_surface_rendering(batch['img'], batch['betas'],
@@ -703,22 +704,23 @@ def inference(test_img_dir, pretrained_checkpoint_pamir,
                              mesh_fname)
 
         ## render vc 추가
-        target_viewid = 180  # -(batch['view_id'].item() + 180)
-        rendered_img = render_mesh(mesh_fname, render_angle=target_viewid)
-        rendered_img = torch.from_numpy(rendered_img).permute(2, 0, 1).unsqueeze(0)
-        # save_image
-        image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
-        save_image(rendered_img, image_fname)
+        if False:
+            target_viewid = 180  # -(batch['view_id'].item() + 180)
+            rendered_img = render_mesh(mesh_fname, render_angle=target_viewid)
+            rendered_img = torch.from_numpy(rendered_img).permute(2, 0, 1).unsqueeze(0)
+            # save_image
+            image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
+            save_image(rendered_img, image_fname)
 
-        ## measure reID
-        reid_dist = get_reid_dist(rendered_img, batch['img'], batch['mask'])
-        reid_list.append(reid_dist.item())
+            ## measure reID
+            reid_dist = get_reid_dist(rendered_img, batch['img'], batch['mask'])
+            reid_list.append(reid_dist.item())
 
 
-        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-            f.write("model id: %s \n" % model_id)
-        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-            f.write("reid : %f  : \n" % reid_dist)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("model id: %s \n" % model_id)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("reid : %f  : \n" % reid_dist)
 
     print('reid mean:', np.mean(reid_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
@@ -1558,21 +1560,22 @@ def inference_multi(test_img_dir,pretrained_checkpoint_pamir,
                              mesh_fname)
 
         ## render vc 추가
-        target_viewid = 180  # -(batch['view_id'].item() + 180)
-        rendered_img = render_mesh(mesh_fname, render_angle=target_viewid)
-        rendered_img = torch.from_numpy(rendered_img).permute(2, 0, 1).unsqueeze(0)
-        # save_image
-        image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
-        save_image(rendered_img, image_fname)
+        if False:
+            target_viewid = 180  # -(batch['view_id'].item() + 180)
+            rendered_img = render_mesh(mesh_fname, render_angle=target_viewid)
+            rendered_img = torch.from_numpy(rendered_img).permute(2, 0, 1).unsqueeze(0)
+            # save_image
+            image_fname = os.path.join(out_dir, model_id + '_rendered_image.png')
+            save_image(rendered_img, image_fname)
 
-        ## measure reID
-        reid_dist = get_reid_dist(rendered_img, batch['img'], batch['mask'])
-        reid_list.append(reid_dist.item())
+            ## measure reID
+            reid_dist = get_reid_dist(rendered_img, batch['img'], batch['mask'])
+            reid_list.append(reid_dist.item())
 
-        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-            f.write("model id: %s \n" % model_id)
-        with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
-            f.write("reid : %f  : \n" % reid_dist)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("model id: %s \n" % model_id)
+            with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
+                f.write("reid : %f  : \n" % reid_dist)
 
     print('reid mean:', np.mean(reid_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
@@ -2149,10 +2152,10 @@ if __name__ == '__main__':
     # 2022_04_01_07_48_14.pt' #13th
     #2022_04_02_05_36_11.pt' #15th
     #2022_04_04_00_11_08.pt # 18th
-    texture_model_dir_multi =  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0413_uv2_tt_nerf_24hie_03_occ_4v_alphaconcat_attlossminus_weight01/checkpoints/latest.pt'
+    #texture_model_dir_multi =  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0413_uv2_tt_nerf_24hie_03_occ_4v_alphaconcat_attlossminus_weight01/checkpoints/latest.pt'
     #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus/checkpoints/2022_04_03_07_59_53.pt'  # latest.pt' #10th
     # '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0328_2_tt_nerf_24hie_03_occ_2v_alphaconcat/checkpoints/2022_04_03_21_58_24.pt'# 24th
-    #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_04_01_30_01.pt' #10th
+    texture_model_dir_multi =  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight01/checkpoints/2022_04_04_01_30_01.pt' #10th
     # '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0331_uv2_tt_nerf_24hie_03_occ_2v_alphaconcat_attlossminus_weight002/checkpoints/2022_04_04_04_25_55.pt' #9th
     #'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/results/0413_uv2_tt_nerf_24hie_03_occ_4v_alphaconcat_attlossminus_weight01/checkpoints/latest.pt'
     # validation
@@ -2164,10 +2167,10 @@ if __name__ == '__main__':
     #validation(geometry_model_dir_pamir, texture_model_dir,'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gcmr/',use_gcmr=True, iternum=0)
     #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gtsmpl_gamma/',use_gcmr= False, iternum=50)
 
-    stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp_4view/'
-    validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage3_optpamirwokp_4view_/',
-                     stage1_dir_forstage3 + '/output_stage2/0414_tt_final_4view/epoch_50',#0410_tt_final_re/epoch_230',#0330_tt_final_4/epoch_100',
-                     stage1_dir_forstage3+'/smpl_optm')
+    #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp_4view/'
+    #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage3_optpamirwokp_4view_/',
+    #                 stage1_dir_forstage3 + '/output_stage2/0414_tt_final_4view/epoch_50',#0410_tt_final_re/epoch_230',#0330_tt_final_4/epoch_100',
+    #                 stage1_dir_forstage3+'/smpl_optm')
 
     #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gcmr/'
     #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_220_3001_thuman_ours_stage3_gcmr/',
@@ -2190,16 +2193,16 @@ if __name__ == '__main__':
     #import pdb; pdb.set_trace()
 
     #inference
-    testing_img_dir = '/home/nas1_temp/dataset/deepfashion/all'#selected_200'
+    testing_img_dir = '/home/nas1_temp/dataset/fassker'#selected_200'
 
     #inference_pifu(testing_img_dir, testing_img_dir +'/pifu_output/pred_vert/', os.path.join(testing_img_dir,'outputs_pifu'))
 
-    #inference_pamir(testing_img_dir, geometry_model_dir_pamir, texture_model_dir_pamir, os.path.join(testing_img_dir,'outputs_pamir_optpamirwokp'), iternum=50)
-    #inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp'), iternum=50)
+    #inference_pamir(testing_img_dir, geometry_model_dir_pamir, texture_model_dir_pamir, os.path.join(testing_img_dir,'outputs_pamir_optpamirwokp_gcmr'), iternum=0)
+    inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp_gcmr_1024'), iternum=0)
 
-    #stage1_dir_forstage3 =os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp')
+    #stage1_dir_forstage3 =os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp_gcmr')
     #inference_multi(testing_img_dir, geometry_model_dir_pamir,texture_model_dir_multi, os.path.join(testing_img_dir,'outputs_3001_ours_stage3_optpamirwokp'),
-    #                stage1_dir_forstage3+'/output_stage2/0330_tt_final_4/epoch_150',
+    #                stage1_dir_forstage3+'/output_stage2/0410_tt_final_re/epoch_300',
     #                stage1_dir_forstage3+'/smpl_optm')
 
 

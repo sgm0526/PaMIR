@@ -761,7 +761,7 @@ class TexPamirNetAttention_nerf_multiview(BaseNetwork):
         self.feat_ch_2D = 256
         self.feat_ch_3D = 32
 
-        self.num_view= 4
+        self.num_view= 2
         self.feat_ch_out = 3 + 1+ 1 +self.num_view#+1
         self.feat_ch_occupancy = 128
         #self.add_module('cg', cg2.CycleGANEncoder(3, self.feat_ch_2D))
