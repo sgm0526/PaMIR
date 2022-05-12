@@ -556,7 +556,7 @@ def inference(test_img_dir, pretrained_checkpoint_pamir,
         img_dir = batch['img_dir'][0]
         model_id = os.path.split(img_dir)[1][:-4]
 
-        vol_res = 1024 #256
+        vol_res = 256
 
         if False:
             surface_render_pred, surface_render_alpha = evaluater.test_surface_rendering(batch['img'], batch['betas'],
