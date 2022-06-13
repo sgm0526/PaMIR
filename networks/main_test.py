@@ -17,6 +17,7 @@ except:
     print('opendr not imported')
 
 from TrainingDataPreparation.ObjIO import load_obj_data
+#from ..data.renderer.mesh import load_obj_mesh
 import trimesh
 import numpy as np
 from torch.utils.data import DataLoader
@@ -1605,10 +1606,10 @@ def validation_multi(pretrained_checkpoint_pamir,
         model_id = model_num.zfill(4) + '_' + str(batch['view_id'][:,0].item()).zfill(4)
         print(model_id)
 
+
+
         view_id1 = str(batch['view_id'][:, 0].item()).zfill(4)
         view_id2 = str(batch['view_id'][:, 1].item()).zfill(4)
-
-
 
         img_fpath1 = stage2_dir+  f'/{model_num}/{view_id1}.png'#f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}.png'
         img1 = cv.imread(img_fpath1).astype(np.uint8)
@@ -1618,20 +1619,21 @@ def validation_multi(pretrained_checkpoint_pamir,
         img2 = cv.imread(img_fpath2).astype(np.uint8)
         img2 = np.float32(cv.cvtColor(img2, cv.COLOR_RGB2BGR)) / 255.
         img2 = torch.from_numpy(img2.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        img_pair = torch.stack([img1, img2], 1)
 
-        view_id3 = str(batch['view_id'][:, 2].item()).zfill(4)
-        view_id4 = str(batch['view_id'][:, 3].item()).zfill(4)
-
-        img_fpath3 = stage2_dir + f'/{model_num}/{view_id1}_{view_id3}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
-        img3 = cv.imread(img_fpath3).astype(np.uint8)
-        img3 = np.float32(cv.cvtColor(img3, cv.COLOR_RGB2BGR)) / 255.
-        img3 = torch.from_numpy(img3.transpose((2, 0, 1))).unsqueeze(0).cuda()
-        img_fpath4 = stage2_dir + f'/{model_num}/{view_id1}_{view_id4}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
-        img4 = cv.imread(img_fpath4).astype(np.uint8)
-        img4 = np.float32(cv.cvtColor(img4, cv.COLOR_RGB2BGR)) / 255.
-        img4 = torch.from_numpy(img4.transpose((2, 0, 1))).unsqueeze(0).cuda()
-
-        img_pair = torch.stack([img1, img2, img3, img4], 1)
+        # view_id3 = str(batch['view_id'][:, 2].item()).zfill(4)
+        # view_id4 = str(batch['view_id'][:, 3].item()).zfill(4)
+        #
+        # img_fpath3 = stage2_dir + f'/{model_num}/{view_id1}_{view_id3}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
+        # img3 = cv.imread(img_fpath3).astype(np.uint8)
+        # img3 = np.float32(cv.cvtColor(img3, cv.COLOR_RGB2BGR)) / 255.
+        # img3 = torch.from_numpy(img3.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        # img_fpath4 = stage2_dir + f'/{model_num}/{view_id1}_{view_id4}.png'  # f'/home/nas1_temp/dataset/Thuman/output_stage2/0303_novolfeat_onlyback_b1_oridata/epoch_33/{model_num}/{view_id1}_{view_id2}.png'
+        # img4 = cv.imread(img_fpath4).astype(np.uint8)
+        # img4 = np.float32(cv.cvtColor(img4, cv.COLOR_RGB2BGR)) / 255.
+        # img4 = torch.from_numpy(img4.transpose((2, 0, 1))).unsqueeze(0).cuda()
+        #
+        # img_pair = torch.stack([img1, img2, img3, img4], 1)
 
         vol_res = 256
         if False:
@@ -1703,6 +1705,7 @@ def validation_multi(pretrained_checkpoint_pamir,
                 mrc.data[:] = nerf_sigma
 
         # save .obj
+
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
         obj_io.save_obj_data(mesh, mesh_fname)
 
@@ -1720,7 +1723,6 @@ def validation_multi(pretrained_checkpoint_pamir,
                              mesh_fname)
 
         ## rotate to gt view
-        # import pdb; pdb.set_trace()
         vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'][:,0])
         mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh_gtview.obj')
         obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
@@ -1772,6 +1774,173 @@ def validation_multi(pretrained_checkpoint_pamir,
         f.write("ssim mean: %f \n" % np.mean(ssim_list))
     with open(os.path.join(out_dir, 'validation_result.txt'), 'a') as f:
         f.write("lpips mean: %f \n" % np.mean(lpips_list))
+
+
+
+def validation_multi_onlytomeasure(pretrained_checkpoint_pamir,
+                      pretrained_checkpoint_pamirtex, out_dir, stage2_dir, smpl_optm_dir=None):
+
+    device = torch.device("cuda")
+    evaluater = EvaluatorTex_multi(device, pretrained_checkpoint_pamir, pretrained_checkpoint_pamirtex)
+
+    p2s_list=[]
+    chamfer_list=[]
+    p2s_list_back = []
+    chamfer_list_back= []
+    out_dir_ = '/home/nas4_user/shimgyumin/fasker/research/pamir/networks/rebuttal_exp_thuman/'
+
+    os.makedirs(out_dir_, exist_ok=True)
+
+    for step_val, batch in enumerate(tqdm(val_data_loader_multi, desc='Testing', total=len(val_data_loader_multi), initial=0)):
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+
+        model_num = val_ds_multi.data_list[step_val // 4]
+        model_id = model_num.zfill(4) + '_' + str(batch['view_id'][:,0].item()).zfill(4)
+        print(model_id)
+
+
+        # save .obj
+
+        mesh_fname = os.path.join(out_dir, model_id + '_sigma_mesh.obj')
+        output = obj_io.load_obj_data(mesh_fname)
+        vertex = output['v']
+        face = output['f']
+        normal = output['vn']
+
+        #vertex, face, normal, _ = load_obj_mesh(mesh_fname, with_normal=True)
+
+        ##
+        qwe = normal.copy()
+        qq = torch.Tensor(range(len(qwe)))
+        vert = torch.Tensor(vertex)
+        vert = torch.cat([vert, qq.unsqueeze(-1)], dim=-1)
+
+        ##for frontside
+
+        vert_pos = vert[qwe[:, -1] > 0]
+        ww = torch.Tensor(range(len(vert_pos)))
+        vert_pos2 = torch.cat([vert_pos, ww.unsqueeze(-1)], dim=-1)
+        vert_dict = {}
+        for qqq in vert_pos2:
+            vert_dict[str(int(qqq[-2].item()))] = int(qqq[-1].item())
+
+        new_face = []
+        for f in face:
+            new_face_one = []
+            for v in f:
+                try:
+                    new_face_one.append(vert_dict[str(v)])
+                except:
+                    break
+            if len(new_face_one) == 3:
+                new_face.append(new_face_one)
+
+        # %%
+        new_face_list = torch.Tensor(new_face).int().numpy()
+        mesh_front = dict()
+        mesh_front['v'] = vert_pos.numpy()
+        mesh_front['f'] = new_face_list
+        mesh_fname_front = os.path.join(out_dir_, model_id + '_test_front.obj') #'test_front.obj'
+        obj_io.save_obj_data(mesh_front, mesh_fname_front)
+
+        mesh= mesh_front
+
+        ## rotate to gt view
+        vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'][:,0])
+        mesh_fname = os.path.join(out_dir_, model_id + '_sigma_mesh_front_gtview.obj')
+        obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh['f']},
+                             mesh_fname)
+
+
+        #measure dist
+        mesh_fname = os.path.join(out_dir_, model_id + '_sigma_mesh_front_gtview.obj')
+
+        tgt_meshname = tgt_mesh_dir+ f'/{model_num}/{model_num}.obj'
+        tgt_mesh = trimesh.load(tgt_meshname)
+        src_mesh = trimesh.load(mesh_fname)
+        tgt_mesh  = trimesh.Trimesh.simplify_quadratic_decimation(tgt_mesh, 100000)
+
+        p2s_dist = get_surface_dist(tgt_mesh, src_mesh)
+        chamfer_dist= get_chamfer_dist(tgt_mesh, src_mesh)
+        p2s_list.append(p2s_dist)
+        chamfer_list.append(chamfer_dist)
+
+        print('p2s:', p2s_dist)
+        print('chamfer', chamfer_dist)
+
+        # for backside %%
+        vert_neg = vert[qwe[:, -1] < 0]
+        ww = torch.Tensor(range(len(vert_neg)))
+        vert_neg2 = torch.cat([vert_neg, ww.unsqueeze(-1)], dim=-1)
+        vert_dict = {}
+        for qqq in vert_neg2:
+            vert_dict[str(int(qqq[-2].item()))] = int(qqq[-1].item())
+
+        new_face = []
+        for f in face:
+            new_face_one = []
+            for v in f:
+                try:
+                    new_face_one.append(vert_dict[str(v)])
+                except:
+                    break
+            if len(new_face_one) == 3:
+                new_face.append(new_face_one)
+
+        new_face_list = torch.Tensor(new_face).int().numpy()
+        mesh_front = dict()
+        mesh_front['v'] = vert_neg.numpy()
+        mesh_front['f'] = new_face_list
+        mesh_fname_front = os.path.join(out_dir_, model_id + '_test_back.obj')  # 'test_front.obj'
+        obj_io.save_obj_data(mesh_front, mesh_fname_front)
+        mesh = mesh_front
+
+        ## rotate to gt view
+        vertices1 = evaluater.rotate_points(torch.from_numpy(mesh['v']).cuda().unsqueeze(0), -batch['view_id'][:, 0])
+        mesh_fname = os.path.join(out_dir_, model_id + '_sigma_mesh_back_gtview.obj')
+        obj_io.save_obj_data({'v': vertices1[0].squeeze().detach().cpu().numpy(),
+                              'f': mesh['f']},
+                             mesh_fname)
+
+        # measure dist
+        mesh_fname = os.path.join(out_dir_, model_id + '_sigma_mesh_back_gtview.obj')
+        src_mesh = trimesh.load(mesh_fname)
+
+
+        p2s_dist_back = get_surface_dist(tgt_mesh, src_mesh)
+        chamfer_dist_back = get_chamfer_dist(tgt_mesh, src_mesh)
+        p2s_list_back.append(p2s_dist_back)
+        chamfer_list_back.append(chamfer_dist_back)
+
+        print('p2s:', p2s_dist)
+        print('chamfer', chamfer_dist)
+
+        with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+            f.write("model id: %s \n" % model_id)
+        with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+            f.write("p2s: %f \n" % p2s_dist)
+        with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+            f.write("chamfer: %f \n" % chamfer_dist)
+        with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+            f.write("p2s: %f \n" % p2s_dist_back)
+        with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+            f.write("chamfer: %f \n" % chamfer_dist_back)
+
+
+    print('Testing Done. ')
+    print('p2s mean:',np.mean(p2s_list))
+    print('chamfer mean:', np.mean(chamfer_list))
+    print('p2s_back mean:', np.mean(p2s_list_back))
+    print('chamfer_back mean:', np.mean(chamfer_list_back))
+    with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+        f.write("p2s mean: %f \n" % np.mean(p2s_list))
+    with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+        f.write("chamfer mean: %f \n" % np.mean(chamfer_list))
+    with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+        f.write("p2s mean: %f \n" % np.mean(p2s_list_back))
+    with open(os.path.join(out_dir_, 'validation_result.txt'), 'a') as f:
+        f.write("chamfer mean: %f \n" % np.mean(chamfer_list_back))
 
 
 def validation_texture_multi(pretrained_checkpoint_pamir,
@@ -2167,10 +2336,20 @@ if __name__ == '__main__':
     #validation(geometry_model_dir_pamir, texture_model_dir,'/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gcmr/',use_gcmr=True, iternum=0)
     #validation(geometry_model_dir_pamir, texture_model_dir, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gtsmpl_gamma/',use_gcmr= False, iternum=50)
 
-    #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp_4view/'
-    #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage3_optpamirwokp_4view_/',
-    #                 stage1_dir_forstage3 + '/output_stage2/0414_tt_final_4view/epoch_50',#0410_tt_final_re/epoch_230',#0330_tt_final_4/epoch_100',
-    #                 stage1_dir_forstage3+'/smpl_optm')
+    stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_optpamirwokp/'
+    #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_230_3001_twindom_ours_stage3_optpamirwokp/',
+    #                 stage1_dir_forstage3 + '/output_stage2/0410_tt_final_re/epoch_230',#0330_tt_final_4/epoch_100',
+   #                  stage1_dir_forstage3+'/smpl_optm')
+    validation_multi_onlytomeasure(geometry_model_dir_pamir, texture_model_dir_multi,
+                     '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_230_3001_thuman_ours_stage3_optpamirwokp/',
+                     stage1_dir_forstage3 + '/output_stage2/0410_tt_final_re/epoch_230',  # 0330_tt_final_4/epoch_100',
+                     stage1_dir_forstage3 + '/smpl_optm')
+
+    # stage1_dir_forstage3 = '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage1_optpamirwokp_4view/'
+    # validation_multi(geometry_model_dir_pamir, texture_model_dir_multi,
+    #                  '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_twindom_ours_stage3_optpamirwokp_4view_/',
+    #                  stage1_dir_forstage3 + '/output_stage2/0414_tt_final_4view/epoch_50',
+    #                  stage1_dir_forstage3 + '/smpl_optm')
 
     #stage1_dir_forstage3 ='/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_thuman_ours_stage1_gcmr/'
     #validation_multi(geometry_model_dir_pamir , texture_model_dir_multi, '/home/nas3_userJ/shimgyumin/fasker/research/pamir/networks/final_results/validation_220_3001_thuman_ours_stage3_gcmr/',
@@ -2198,7 +2377,7 @@ if __name__ == '__main__':
     #inference_pifu(testing_img_dir, testing_img_dir +'/pifu_output/pred_vert/', os.path.join(testing_img_dir,'outputs_pifu'))
 
     #inference_pamir(testing_img_dir, geometry_model_dir_pamir, texture_model_dir_pamir, os.path.join(testing_img_dir,'outputs_pamir_optpamirwokp_gcmr'), iternum=0)
-    inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp_gcmr_1024'), iternum=0)
+    #inference(testing_img_dir, geometry_model_dir_pamir, texture_model_dir, os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp_gcmr_1024'), iternum=0)
 
     #stage1_dir_forstage3 =os.path.join(testing_img_dir,'outputs_ours_stage1_optpamirwokp_gcmr')
     #inference_multi(testing_img_dir, geometry_model_dir_pamir,texture_model_dir_multi, os.path.join(testing_img_dir,'outputs_3001_ours_stage3_optpamirwokp'),
